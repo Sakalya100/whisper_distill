@@ -179,15 +179,18 @@ def label_and_cache(rows: list[dict]) -> None:
                         dropped += 1
                         continue
 
-                n_frames = min(
-                    audio_cfg.n_frames,
-                    int(round(r["duration_s"] * 100)),  # 100 mel frames per second
-                )
-                mel = feats[i, :, :n_frames].numpy()
+                # Take the teacher's own columns wholesale. The padded tail already
+                # carries Whisper's floor value (mel.max() - 2.0 in normalised space),
+                # which is what the frozen encoder expects -- re-padding with zeros here
+                # would be a silent train/inference mismatch. This also avoids deriving a
+                # frame count from a rounded duration.
+                mel = feats[i, :, : audio_cfg.n_frames].numpy()
+                speech_frames = min(audio_cfg.n_frames, int(round(r["duration_s"] * 100)))
                 token_ids = proc.tokenizer(text, add_special_tokens=True).input_ids
 
                 writer.add(
                     r["clip_id"], mel, token_ids,
+                    speech_frames=speech_frames,
                     source=r.get("source", ""),
                     duration_s=r["duration_s"],
                     text=text,

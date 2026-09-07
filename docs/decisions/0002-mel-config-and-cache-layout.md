@@ -20,10 +20,19 @@ not be provisioned for the smaller figure.
 
 ## The prefix property
 
-A ≤10 s clip's student mel (80×1000) is a **prefix** of the teacher's 30 s zero-padded mel
+A ≤10 s clip's student mel (80×1000) is a **prefix** of the teacher's 30 s padded mel
 (80×3000). One FFT therefore serves both models, which is what makes the fused
-label-and-cache pass possible. This holds only if clips are segmented to ≤10 s *before*
-labelling — hence VAD segmentation is a CPU-stage prerequisite, not an optimisation.
+label-and-cache pass possible. Two conditions:
+
+1. Clips must be segmented to ≤10 s *before* labelling — hence VAD segmentation is a
+   CPU-stage prerequisite, not an optimisation.
+2. **The prefix must be taken with the teacher's own padding, not re-padded.** Whisper
+   normalises log-mel as `(log10(mag) + 4) / 4` after flooring at `log_spec.max() - 8`, so
+   its padded frames hold a negative constant sitting exactly `2.0` below the clip's
+   normalised maximum — not `0.0`. Since the encoder is **frozen**, it cannot adapt to a
+   different padding convention, so zero-padding would be a silent train/inference
+   mismatch across the whole corpus. `ShardWriter` therefore prefers a full-width mel and
+   falls back to `whisper_floor(mel)` rather than zeros.
 
 ## Storage layout
 
@@ -33,10 +42,11 @@ option. Layout:
 ```
 shard-0000.mels.npy      # (N, 80, 1000) fp16 memmap
 shard-0000.tokens.npy    # (N, L) int32, right-padded with -100
-index.parquet            # clip_id, shard, row, n_frames, n_tokens, source, teacher_wer, entropy
+index.json               # clip_id, shard, row, n_frames, n_tokens, source, teacher_wer, entropy
 ```
 
-~4 GB per shard, three shards, one index. Read memory-mapped from `/kaggle/input`,
+~4 GB per shard, three shards, one index. JSON rather than parquet: the index is a few MB
+of metadata read once at startup, so a columnar format buys nothing and adds a dependency. Read memory-mapped from `/kaggle/input`,
 which turns the dataloader from a CPU bottleneck into a page-cache read.
 
 ## What would reopen this

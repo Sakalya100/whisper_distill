@@ -5,7 +5,13 @@ import math
 import numpy as np
 import pytest
 
-from whisper_distill.data.pack import PAD_TOKEN, ShardWriter, open_shards
+from whisper_distill.data.pack import (
+    PAD_TOKEN,
+    WHISPER_FLOOR_OFFSET,
+    ShardWriter,
+    open_shards,
+    whisper_floor,
+)
 from whisper_distill.data.segment import Segment, merge_to_window
 from whisper_distill.labeling.filters import (
     calibrate_entropy_threshold,
@@ -57,16 +63,47 @@ def _write(tmp_path, n=7):
     return open_shards(tmp_path)
 
 
-def test_round_trip_preserves_content_and_pads_the_rest(tmp_path):
+def test_round_trip_preserves_content_and_tokens(tmp_path):
     index, shards = _write(tmp_path)
     assert len(index.records) == 7
     r = index.records[5]
     mels, tokens = shards[r.shard]
     assert mels[r.row].shape == (80, 1000)
-    assert np.allclose(mels[r.row][:, : r.n_frames], 5.0)
-    assert np.all(mels[r.row][:, r.n_frames :] == 0), "padding must be zero, as Whisper's is"
+    assert np.allclose(mels[r.row][:, :300], 5.0)
     assert list(tokens[r.row][:4]) == [1, 2, 3, 5]
     assert tokens[r.row][4] == PAD_TOKEN
+
+
+def test_whisper_floor_is_two_below_the_maximum():
+    """Whisper normalises log-mel as (log10+4)/4 after flooring at log.max()-8, so the
+    floor sits exactly 8/4 = 2.0 below the normalised maximum. Exact for any input."""
+    mel = np.array([[-0.5, 1.25, 0.0]], dtype=np.float32)
+    assert whisper_floor(mel) == pytest.approx(1.25 - WHISPER_FLOOR_OFFSET)
+
+
+def test_short_mel_is_padded_with_the_whisper_floor_not_zero(tmp_path):
+    """Zero-padding would feed a FROZEN encoder a value it never saw in training, and a
+    frozen encoder cannot adapt. This is the bug the previous assertion enshrined."""
+    mel = np.full((80, 300), 0.75, dtype=np.float32)
+    with ShardWriter(tmp_path, n_mels=80, n_frames=1000, max_tokens=8) as w:
+        w.add("c0", mel, [1, 2])
+    index, shards = open_shards(tmp_path)
+    row = shards[0][0][0]
+    assert np.allclose(row[:, :300], 0.75)
+    tail = row[:, 300:]
+    assert not np.any(tail == 0.0), "padding must never be zero"
+    assert np.allclose(tail, 0.75 - WHISPER_FLOOR_OFFSET, atol=1e-3)
+
+
+def test_full_width_mel_is_stored_untouched(tmp_path):
+    """The preferred path: slice the teacher's own feature tensor, padding included."""
+    mel = np.full((80, 1000), 0.4, dtype=np.float32)
+    mel[:, 600:] = -0.83                     # the teacher's own floor region
+    with ShardWriter(tmp_path, n_mels=80, n_frames=1000, max_tokens=8) as w:
+        w.add("c0", mel, [1], speech_frames=600)
+    index, shards = open_shards(tmp_path)
+    assert np.allclose(shards[0][0][0], mel, atol=1e-3)
+    assert index.records[0].n_frames == 600  # metadata records real speech, not width
 
 
 def test_rolls_to_multiple_shards(tmp_path):

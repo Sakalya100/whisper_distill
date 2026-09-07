@@ -108,6 +108,14 @@ from the corpus does not drop it from the model.
 *encoder* length. 160 KB/clip fp16 → **11.5 GB** for 72,000 clips, not 5.8. See
 [decision 0002](decisions/0002-mel-config-and-cache-layout.md).
 
+**Whisper's mel padding is not zero.** Whisper normalises log-mel as `(log10(mag) + 4) / 4`
+after flooring at `log_spec.max() - 8`, so padded frames hold a negative constant sitting
+exactly `2.0` below the clip's normalised maximum. Since the encoder is **frozen** it
+cannot adapt to a different convention, which makes zero-padding the mel cache a silent
+train/inference mismatch across the whole corpus. Take the teacher's own columns wholesale
+(`feats[i, :, :1000]`) rather than re-padding. Caught by review, not by tests — the
+original test asserted the padding *was* zero, which is why 62 green tests missed it.
+
 **Vaani's 2,043 hours is the transcribed subset, not the corpus.** The full collection is
 31,255 hours of audio. The Hindi config of `ARTPARK-IISc/Vaani-transcription-part` holds
 **963 hours**; all 59 language configs total **234 GB**. CC-BY-4.0, gated but free. We want

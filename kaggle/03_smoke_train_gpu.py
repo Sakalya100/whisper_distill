@@ -81,6 +81,21 @@ def main() -> None:
     model, _ = build_student(DEFAULT.student, token_counts=None)
     proc = WhisperProcessor.from_pretrained(DEFAULT.student.init_model_id)
 
+    # Step 2 tokenised the labels with the TEACHER's processor; we decode here with the
+    # STUDENT's. Both are the same multilingual Whisper tokenizer today, so the ids line
+    # up -- but if Gate 1 forces whisper-large-v3 (51866 tokens) or the init falls back to
+    # openai/whisper-small, they could diverge silently and every label would be garbage.
+    teacher_proc = WhisperProcessor.from_pretrained(DEFAULT.teacher.model_id)
+    probe = "meeting 4 baje hai, Slack pe ping karo"
+    assert (
+        teacher_proc.tokenizer(probe).input_ids == proc.tokenizer(probe).input_ids
+    ), (
+        f"teacher ({DEFAULT.teacher.model_id}) and student "
+        f"({DEFAULT.student.init_model_id}) tokenizers disagree -- cached label ids are "
+        "not valid for this student. Re-tokenise the cache or align the checkpoints."
+    )
+    print("tokenizers agree between teacher and student")
+
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     total = sum(p.numel() for p in model.parameters())
     print(f"\nstudent: {total / 1e6:.1f}M params, {trainable / 1e6:.1f}M trainable "
@@ -121,9 +136,19 @@ def main() -> None:
     resume = None
     try:
         from huggingface_hub import snapshot_download
-        resume = snapshot_download(HUB_REPO, repo_type="model",
-                                   allow_patterns=["checkpoint-*/*"])
-        print(f"resuming from {resume}")
+        root = snapshot_download(HUB_REPO, repo_type="model",
+                                 allow_patterns=["checkpoint-*/*"])
+        # snapshot_download returns the repo ROOT, which contains checkpoint-100/,
+        # checkpoint-200/ ... Trainer needs a directory with trainer_state.json directly
+        # inside it, so resolve to the highest-numbered checkpoint. An existing repo with
+        # no checkpoints downloads fine and yields an empty dir -- hence the `if cands`.
+        cands = sorted(
+            Path(root).glob("checkpoint-*"),
+            key=lambda d: int(d.name.split("-")[1]),
+        )
+        resume = str(cands[-1]) if cands else None
+        print(f"resuming from {resume}" if resume
+              else "hub repo exists but holds no checkpoint; starting fresh")
     except Exception as e:  # noqa: BLE001 - first run has nothing to resume from
         print(f"no prior checkpoint ({type(e).__name__}); starting fresh")
 

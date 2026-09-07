@@ -17,7 +17,6 @@ cpu = [
     "datasets>=2.18",
     "soundfile>=0.12",
     "librosa>=0.10",
-    "pyarrow>=15",
     "torch>=2.1",          # silero-vad only; CPU wheel is enough
     "tqdm>=4.66",
 ]
@@ -30,7 +29,6 @@ gpu = [
     "faster-whisper>=1.0",  # CTranslate2 teacher for the bulk labelling pass
     "ctranslate2>=4.0",
     "huggingface_hub>=0.23",
-    "pyarrow>=15",
 ]
 dev = ["pytest>=8", "ruff>=0.4"]
 

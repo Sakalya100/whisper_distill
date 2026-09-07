@@ -6,26 +6,37 @@ The 30 h/week pool is shared across P100 and T4x2, and nothing in Kaggle's docum
 says which way the meter charges. It moves the schedule ~2x and decides whether the
 three-ablation block is affordable at all.
 
+RUN IT AS **ONE** SESSION, ALONE. Learned the hard way: a two-session probe produced a
+54-minute delta that is equally consistent with per-GPU billing (sessions summing to
+27 min) and wall-clock billing (summing to 54 min). Two unknowns, one equation. A single
+T4x2 session of known duration has a clean factor-of-2 answer:
+
+    20 min of wall clock  ->  meter +20  = wall-clock billing
+                          ->  meter +40  = per-GPU billing
+
 HOW TO RUN
   1. Read the GPU meter at kaggle.com/settings ("Kaggle GPU  HH:MM / 30 hrs").
      Screenshot it. The meter rounds and refreshes lazily -- you want the before value
      in writing, not in memory.
-  2. Set BEFORE_METER below, then Save & Run All (Commit).
-  3. Optionally start a second GPU notebook while this runs -- whether it launches, queues
-     or is refused gives you the concurrency cap for free. If you do, set
-     N_CONCURRENT_SESSIONS to match and keep the runtimes equal.
-  4. When it finishes, read the meter again and run the decode cell at the bottom.
+  2. Set BEFORE_METER below, then Save & Run All (Commit). Nothing else GPU-backed
+     running, and do not start a second session this time.
+  3. When it finishes, note the notebook's own reported duration from its version
+     history -- not RUN_MINUTES. A commit also pays container startup and teardown.
+  4. Read the meter again and run the decode cell at the bottom.
   5. Separately: run a CPU-only notebook for 15 min and check the GPU meter again. If it
      did not move, CPU sessions are free -- the assumption the whole workflow rests on.
+
+Note that a P100 probe cannot answer this: with one GPU, both hypotheses predict the same
+meter delta. The dual-GPU session is the only discriminating case.
 """
 
 import subprocess
 import time
 
 # ----------------------------------------------------------------------- configure me
-RUN_MINUTES = 15
-N_CONCURRENT_SESSIONS = 1  # set to 2 if you launch a second T4x2 commit alongside
-BEFORE_METER = "00:00"     # copied from kaggle.com/settings before starting
+RUN_MINUTES = 20           # long enough that startup overhead cannot flip the verdict
+N_CONCURRENT_SESSIONS = 1  # keep at 1 -- see the docstring on why two is ambiguous
+BEFORE_METER = "00:54"     # copied from kaggle.com/settings before starting
 # --------------------------------------------------------------------------------------
 
 
@@ -99,6 +110,13 @@ def decode(after_meter: str) -> None:
         return int(h) * 60 + int(m)
 
     delta = to_min(after_meter) - to_min(BEFORE_METER)
+
+    # Show the inverse solve first: it says what runtime each hypothesis needs, which is
+    # what you check against the notebook's reported duration.
+    from whisper_distill.labeling.quota import implied_runtimes
+    print(implied_runtimes(delta, n_sessions=N_CONCURRENT_SESSIONS).render())
+    print()
+
     verdict = decode_quota_probe(
         meter_delta_minutes=delta,
         n_concurrent_sessions=N_CONCURRENT_SESSIONS,

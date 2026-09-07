@@ -49,6 +49,29 @@ rather than assuming the sleep length.
 `whisper_distill.labeling.quota.decode_quota_probe` implements this and deliberately
 refuses to guess at the midpoint, falling back to the pessimistic budget.
 
+### Result of the first probe: inconclusive, and why
+
+Meter went `00:00 → 00:54`. **54 minutes over two concurrent T4×2 sessions is two unknowns
+against one equation:**
+
+| Hypothesis | Implied sum of the two session durations |
+|---|---|
+| wall-clock billing | 54 min (~27 each) |
+| per-GPU billing | 27 min (~13.5 each) |
+
+Both are entirely plausible, so the reading does not decide anything on its own. The
+missing datum is each notebook's **reported duration from its version history** — if they
+summed to ~27 min it is per-GPU; ~54 min and it is wall-clock.
+
+`whisper_distill.labeling.quota.implied_runtimes` does this inverse solve, and
+`decode_quota_probe(..., session_minutes=[...])` now takes unequal durations, since
+concurrent commits rarely run for the same length.
+
+**The clean re-run:** one T4×2 session, alone, 20 minutes. Wall-clock predicts `+20`,
+per-GPU predicts `+40` — a factor of two, no concurrency confound, and startup overhead
+cannot bridge the gap. Costs 20–40 min of a 30-hour week. A P100 probe cannot substitute:
+with one GPU both hypotheses predict the same delta.
+
 ### Still open
 
 `[UNVERIFIED]` **Are CPU sessions free?** The load-bearing assumption of the workflow

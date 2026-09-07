@@ -274,7 +274,7 @@
   <header class="masthead">
     <div class="eyebrow">
       <span class="dot"></span>
-      <span class="mono-label">Build plan &middot; gate 0 in progress &middot; 8 Sep 2026</span>
+      <span class="mono-label">Build plan &middot; gate 0 re-running &middot; 8 Sep 2026</span>
     </div>
     <h1>Hinglish dictation on free Kaggle</h1>
     <p class="standfirst" style="margin-bottom:1rem">Distilling a 132M on-device dictation model from a Hindi Whisper teacher, on a shared 30&#8209;hour weekly GPU quota. The plan is ordered by <em>what has to be measured before the rest of it means anything</em> &mdash; two gates up front, then a schedule that survives a session disconnect.</p>
@@ -303,25 +303,29 @@
       <p style="margin-bottom:0"><b>Concurrency cap is at least 2.</b> Two notebooks, both <span class="mono">Version #1 with GPU T4 x2</span>, ran side by side. That question is settled without a separate experiment.</p>
     </div>
 
-    <div class="gate">
-      <span class="gate-tag">Measuring &middot; two concurrent commits</span>
-      <h3>Decoding the meter</h3>
-      <p>The probe ran as <b>two</b> concurrent T4&times;2 commits rather than one, so the delta has two candidate readings for <span class="mono">N</span> sessions of <span class="mono">T</span> minutes each.</p>
+    <div class="gate crit">
+      <span class="gate-tag">First probe &middot; inconclusive</span>
+      <h3>54 minutes, two unknowns, one equation</h3>
+      <p>The meter went <span class="mono">00:00 &rarr; 00:54</span> across two concurrent T4&times;2 commits. That does not decide anything on its own, because the per&#8209;session durations were never recorded:</p>
       <div class="scroll">
         <table>
-          <thead><tr><th>Meter delta</th><th>Verdict</th><th class="n">Budget</th></tr></thead>
+          <thead><tr><th>Hypothesis</th><th>Implied sum of the two durations</th><th class="n">Budget</th></tr></thead>
           <tbody>
-            <tr><td><span class="mono">&asymp; N&times;T</span> &nbsp;(2&times;15 = <b>30 min</b>)</td><td>wall&#8209;clock billing &mdash; a 12&nbsp;h commit costs 12 quota&#8209;h and yields ~24 GPU&#8209;h. Run everything DDP inside <em>one</em> dual&#8209;GPU session.</td><td class="n">54 h<br>1.8 wk</td></tr>
-            <tr><td><span class="mono">&asymp; N&times;T&times;2</span> (2&times;15&times;2 = <b>60 min</b>)</td><td>per&#8209;GPU billing &mdash; T4&times;2 buys only VRAM headroom. Cut the ablation block from three runs to one.</td><td class="n">108 h<br>3.6 wk</td></tr>
-            <tr><td>near the <b>45 min</b> midpoint</td><td>inconclusive &mdash; almost always unequal session runtimes. Re&#8209;run as a single 30&#8209;minute commit with nothing else active.</td><td class="n">&mdash;</td></tr>
+            <tr><td>wall&#8209;clock billing</td><td><span class="mono">54 min</span> &nbsp;(~27 each)</td><td class="n">54 h<br>1.8 wk</td></tr>
+            <tr><td>per&#8209;GPU billing</td><td><span class="mono">27 min</span> &nbsp;(~13.5 each)</td><td class="n">108 h<br>3.6 wk</td></tr>
           </tbody>
         </table>
-        <caption>Two caveats on reading it: both sessions must have run the <em>same</em> duration for the delta to decode, and a committed run pays container startup and teardown on top of the cell&rsquo;s own runtime &mdash; so take each notebook&rsquo;s duration from its version history, not from the sleep length.</caption>
+        <caption>Both are entirely plausible. The missing datum is each notebook&rsquo;s reported duration from its version history &mdash; summing to ~27 min means per&#8209;GPU, ~54 min means wall&#8209;clock.</caption>
       </div>
       <div class="blocks">
-        <b>Still open</b>
-        <b style="margin-top:.5rem">Are CPU sessions free?</b> The load&#8209;bearing assumption of the workflow below. Run a CPU&#8209;only notebook for 15 minutes and check whether the GPU meter moves. And print <span class="mono">df -h</span> &mdash; the ~20&nbsp;GB figure is the <em>output</em> cap, not the scratch disk.
+        <b>The clean re-run</b>
+        <b style="margin-top:.5rem">One T4&times;2 session, alone, 20 minutes.</b> Wall&#8209;clock predicts <span class="mono">+20</span>, per&#8209;GPU predicts <span class="mono">+40</span> &mdash; a factor of two, no concurrency confound, and startup overhead cannot bridge the gap. Costs 20&ndash;40 min of a 30&#8209;hour week. A P100 probe cannot substitute: with one GPU both hypotheses predict the same delta.
       </div>
+    </div>
+
+    <div class="gate">
+      <span class="gate-tag">Also still open</span>
+      <p style="margin-bottom:0"><b>Are CPU sessions free?</b> The load&#8209;bearing assumption of the workflow below. Run a CPU&#8209;only notebook for 15 minutes and check whether the GPU meter moves. And print <span class="mono">df -h</span> &mdash; the ~20&nbsp;GB figure is the <em>output</em> cap, not the scratch disk.</p>
     </div>
   </section>
 

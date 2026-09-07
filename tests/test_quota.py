@@ -57,3 +57,52 @@ def test_invalid_probe_parameters_are_rejected():
         _probe(30, sessions=0)
     with pytest.raises(ValueError):
         _probe(30, minutes=0)
+
+
+# ---------------------------------------------------------------- unequal durations
+def test_unequal_session_durations_are_summed_not_averaged():
+    """Concurrent commits rarely run for equal lengths -- one is started after the other."""
+    from whisper_distill.labeling.quota import decode_quota_probe as d
+
+    # 15 + 12 = 27 min of wall clock; x2 GPUs = 54 min under per-GPU billing.
+    assert d(meter_delta_minutes=54, session_minutes=[15, 12]).billing == "per_gpu"
+    # 27 + 27 = 54 min of wall clock, which per-session billing would charge directly.
+    assert d(meter_delta_minutes=54, session_minutes=[27, 27]).billing == "wall_clock"
+
+
+def test_session_minutes_is_validated():
+    from whisper_distill.labeling.quota import decode_quota_probe as d
+
+    with pytest.raises(ValueError):
+        d(meter_delta_minutes=30, session_minutes=[])
+    with pytest.raises(ValueError):
+        d(meter_delta_minutes=30, session_minutes=[15, -1])
+    with pytest.raises(ValueError, match="pass session_minutes"):
+        d(meter_delta_minutes=30)
+
+
+# ------------------------------------------------------------------- inverse solve
+def test_implied_runtimes_inverts_the_probe():
+    """The direction you need when the meter is in hand but the durations are not."""
+    from whisper_distill.labeling.quota import implied_runtimes
+
+    r = implied_runtimes(54, n_sessions=2, gpus_per_session=2)
+    assert r.if_wall_clock == 54.0   # durations summed to 54 min
+    assert r.if_per_gpu == 27.0      # durations summed to 27 min
+
+
+def test_implied_runtimes_is_identity_on_a_single_gpu():
+    """P100 cannot distinguish the hypotheses -- one GPU means both predict the same."""
+    from whisper_distill.labeling.quota import implied_runtimes
+
+    r = implied_runtimes(20, n_sessions=1, gpus_per_session=1)
+    assert r.if_wall_clock == r.if_per_gpu == 20.0
+
+
+def test_implied_runtimes_rejects_nonsense():
+    from whisper_distill.labeling.quota import implied_runtimes
+
+    with pytest.raises(ValueError):
+        implied_runtimes(-1)
+    with pytest.raises(ValueError):
+        implied_runtimes(30, gpus_per_session=0)

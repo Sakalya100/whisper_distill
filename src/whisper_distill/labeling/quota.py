@@ -15,6 +15,7 @@ finish and write the verdict into docs/01-kaggle-execution-plan.md.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 GPUS_PER_T4X2 = 2
@@ -22,6 +23,58 @@ GPUS_PER_T4X2 = 2
 #: Committed runs pay container startup, dependency install and teardown on top of the
 #: cell's own runtime. Compare against the notebook's reported duration, not your sleep().
 STARTUP_OVERHEAD_TOLERANCE = 0.35
+
+
+@dataclass(frozen=True)
+class ImpliedRuntimes:
+    """Inverse solve: what runtime would each hypothesis require to explain the meter?
+
+    This is the direction you actually need when the meter reading is in hand but the
+    per-session durations are not -- it turns "I saw +54 min" into "so the sessions must
+    have summed to 54 min (wall-clock) or 27 min (per-GPU)", and then one glance at the
+    notebooks' version history picks the winner.
+    """
+
+    meter_delta_minutes: float
+    gpus_per_session: int
+    n_sessions: int
+
+    @property
+    def if_wall_clock(self) -> float:
+        """Sum of session durations implied by wall-clock billing."""
+        return self.meter_delta_minutes
+
+    @property
+    def if_per_gpu(self) -> float:
+        """Sum of session durations implied by per-GPU billing."""
+        return self.meter_delta_minutes / self.gpus_per_session
+
+    def render(self) -> str:
+        n = max(self.n_sessions, 1)
+        return "\n".join([
+            f"meter delta {self.meter_delta_minutes:.0f} min over {self.n_sessions} "
+            f"session(s) of {self.gpus_per_session} GPU(s):",
+            f"  if wall-clock -> durations summed to {self.if_wall_clock:.1f} min "
+            f"({self.if_wall_clock / n:.1f} each)",
+            f"  if per-GPU    -> durations summed to {self.if_per_gpu:.1f} min "
+            f"({self.if_per_gpu / n:.1f} each)",
+            "",
+            "Read each notebook's duration from its version history to pick one.",
+        ])
+
+
+def implied_runtimes(
+    meter_delta_minutes: float,
+    *,
+    n_sessions: int = 1,
+    gpus_per_session: int = GPUS_PER_T4X2,
+) -> ImpliedRuntimes:
+    """Solve the probe backwards, for when you have the meter but not the clock."""
+    if meter_delta_minutes < 0:
+        raise ValueError("meter delta cannot be negative")
+    if gpus_per_session < 1 or n_sessions < 1:
+        raise ValueError("need at least one session with at least one GPU")
+    return ImpliedRuntimes(meter_delta_minutes, gpus_per_session, n_sessions)
 
 
 @dataclass(frozen=True)
@@ -53,22 +106,38 @@ class QuotaVerdict:
 def decode_quota_probe(
     *,
     meter_delta_minutes: float,
-    n_concurrent_sessions: int,
-    minutes_per_session: float,
+    n_concurrent_sessions: int | None = None,
+    minutes_per_session: float | None = None,
+    session_minutes: Sequence[float] | None = None,
     gpus_per_session: int = GPUS_PER_T4X2,
     gpu_hours_needed: float = 108.0,
     tolerance: float = STARTUP_OVERHEAD_TOLERANCE,
 ) -> QuotaVerdict:
     """Classify the meter reading and translate it into a schedule.
 
+    Give either `session_minutes` (one duration per session -- preferred, since concurrent
+    commits rarely run for equal lengths) or the `n_concurrent_sessions` /
+    `minutes_per_session` pair for the equal-duration case.
+
     `gpu_hours_needed` is the plan's mid-estimate of compute required, in GPU-hours. Under
     wall-clock billing a dual-GPU session converts 1 quota-hour into 2 GPU-hours, so the
     quota cost halves.
     """
-    if n_concurrent_sessions < 1 or minutes_per_session <= 0:
-        raise ValueError("need at least one session with positive runtime")
+    if session_minutes is not None:
+        durations = list(session_minutes)
+        if not durations or any(d <= 0 for d in durations):
+            raise ValueError("session_minutes must be non-empty with positive durations")
+        wall = sum(durations)
+    else:
+        if n_concurrent_sessions is None or minutes_per_session is None:
+            raise ValueError(
+                "pass session_minutes, or both n_concurrent_sessions and "
+                "minutes_per_session"
+            )
+        if n_concurrent_sessions < 1 or minutes_per_session <= 0:
+            raise ValueError("need at least one session with positive runtime")
+        wall = n_concurrent_sessions * minutes_per_session
 
-    wall = n_concurrent_sessions * minutes_per_session
     per_gpu = wall * gpus_per_session
 
     # Classify by which prediction is closer, but refuse to call it when the reading lands

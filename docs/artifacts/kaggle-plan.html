@@ -1,0 +1,544 @@
+<title>Hinglish Dictation on Free Kaggle</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;600&family=Noto+Sans+Devanagari:wght@400;600&display=swap">
+<style>
+  :root {
+    --paper:#f5f7fb; --surface:#ffffff; --surface-2:#eaeef6; --rule:#d3dae7;
+    --text:#171d29; --text-dim:#5a6579; --text-faint:#8b93a4;
+    --accent:#2843d4; --accent-ink:#1b2f9e; --accent-soft:#e4e8fc;
+    --warn:#8c5a0c; --warn-bg:#fcf2df; --warn-rule:#d09a24;
+    --crit:#9d2d43; --crit-bg:#fbedf0; --crit-rule:#c2506a;
+    --ok:#1f6b4f; --ok-bg:#e6f2ec;
+    --shadow:0 1px 2px rgba(23,29,41,.06), 0 8px 24px -12px rgba(23,29,41,.14);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:#0c1016; --surface:#141a25; --surface-2:#1a2130; --rule:#283142;
+      --text:#dee4ef; --text-dim:#8d97aa; --text-faint:#6a7488;
+      --accent:#8698ff; --accent-ink:#a5b2ff; --accent-soft:#1a2246;
+      --warn:#e3ab48; --warn-bg:#241b0b; --warn-rule:#a67c24;
+      --crit:#ea8298; --crit-bg:#2a121a; --crit-rule:#8f3b4e;
+      --ok:#6fc7a1; --ok-bg:#0f2620;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:#0c1016; --surface:#141a25; --surface-2:#1a2130; --rule:#283142;
+    --text:#dee4ef; --text-dim:#8d97aa; --text-faint:#6a7488;
+    --accent:#8698ff; --accent-ink:#a5b2ff; --accent-soft:#1a2246;
+    --warn:#e3ab48; --warn-bg:#241b0b; --warn-rule:#a67c24;
+    --crit:#ea8298; --crit-bg:#2a121a; --crit-rule:#8f3b4e;
+    --ok:#6fc7a1; --ok-bg:#0f2620;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--paper);
+    color: var(--text);
+    font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+    font-size: 1.0625rem;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    display: grid;
+    grid-template-columns: 1fr min(66ch, 100%) 1fr;
+    row-gap: 0;
+    padding: 0 1.25rem 6rem;
+  }
+  .page > * { grid-column: 2; }
+  .page > .wide { grid-column: 1 / -1; width: min(94ch, 100%); margin-inline: auto; }
+
+  h1, h2, h3, .mono-label, th, .num {
+    font-family: Archivo, "Helvetica Neue", Arial, sans-serif;
+  }
+  h1 {
+    font-size: clamp(2.1rem, 5.4vw, 3.15rem);
+    font-weight: 700; letter-spacing: -.028em; line-height: 1.02;
+    text-wrap: balance; margin: 0 0 .7rem;
+  }
+  h2 {
+    font-size: clamp(1.35rem, 3vw, 1.72rem);
+    font-weight: 700; letter-spacing: -.02em; line-height: 1.14;
+    text-wrap: balance; margin: 0 0 .1rem;
+  }
+  h3 {
+    font-size: 1.02rem; font-weight: 600; letter-spacing: -.006em;
+    text-wrap: balance; margin: 0 0 .35rem;
+  }
+  p { margin: 0 0 1rem; }
+  p:last-child { margin-bottom: 0; }
+  a { color: var(--accent-ink); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  strong { font-weight: 600; }
+  code, .mono, kbd {
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: .855em;
+  }
+  code {
+    background: var(--surface-2); border: 1px solid var(--rule);
+    border-radius: 3px; padding: .06em .32em; word-break: break-word;
+  }
+  .mono-label {
+    font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+    font-size: .68rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .13em;
+    color: var(--text-faint);
+  }
+  .deva { font-family: "Noto Sans Devanagari", system-ui, sans-serif; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+  /* ---- masthead ---- */
+  header.masthead { padding: 4.5rem 0 0; }
+  .eyebrow {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: .55rem;
+    margin-bottom: 1.4rem;
+  }
+  .eyebrow .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+  .standfirst {
+    font-size: 1.16rem; line-height: 1.55; color: var(--text-dim);
+    margin: 0 0 2rem; text-wrap: pretty;
+  }
+  .standfirst em { font-style: italic; color: var(--text); }
+
+  /* ---- spec strip ---- */
+  .strip {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+    gap: 0; border-block: 1px solid var(--rule);
+    margin-bottom: 3.75rem;
+  }
+  .strip div { padding: .95rem 1.1rem .95rem 0; }
+  .strip div + div { border-left: 1px solid var(--rule); padding-left: 1.1rem; }
+  .strip .num {
+    display: block; font-size: 1.3rem; font-weight: 600;
+    letter-spacing: -.02em; font-variant-numeric: tabular-nums;
+    margin-top: .18rem;
+  }
+  .strip .num small { font-size: .72rem; font-weight: 500; color: var(--text-faint); letter-spacing: 0; }
+
+  /* ---- sections ---- */
+  section { padding-top: 3.4rem; }
+  .sec-head { margin-bottom: 1.35rem; }
+  .sec-head .mono-label { display: block; margin-bottom: .5rem; }
+  .lede { color: var(--text-dim); margin-top: .55rem; }
+
+  /* ---- gate blocks: these are dependency gates, not decoration ---- */
+  .gate {
+    background: var(--surface); border: 1px solid var(--rule);
+    border-left: 3px solid var(--warn-rule);
+    box-shadow: var(--shadow);
+    padding: 1.5rem 1.6rem; margin: 0 0 1.5rem;
+  }
+  .gate.crit { border-left-color: var(--crit-rule); }
+  .gate-tag {
+    display: inline-flex; align-items: center; gap: .45rem;
+    font-family: "JetBrains Mono", monospace; font-size: .655rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .12em;
+    background: var(--warn-bg); color: var(--warn);
+    border: 1px solid var(--warn-rule); border-radius: 2px;
+    padding: .2rem .45rem; margin-bottom: .8rem;
+  }
+  .gate.crit .gate-tag { background: var(--crit-bg); color: var(--crit); border-color: var(--crit-rule); }
+  .blocks {
+    margin-top: 1.15rem; padding-top: .9rem; border-top: 1px dashed var(--rule);
+    font-size: .93rem; color: var(--text-dim);
+  }
+  .blocks b {
+    font-family: "JetBrains Mono", monospace; font-size: .68rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .11em; color: var(--text-faint);
+    display: block; margin-bottom: .3rem;
+  }
+
+  /* ---- procedure ---- */
+  ol.proc { list-style: none; counter-reset: p; padding: 0; margin: 0; display: grid; gap: .8rem; }
+  ol.proc li {
+    counter-increment: p; position: relative; padding-left: 2.2rem;
+    font-size: 1rem;
+  }
+  ol.proc li::before {
+    content: counter(p); position: absolute; left: 0; top: .1em;
+    font-family: "JetBrains Mono", monospace; font-size: .72rem; font-weight: 600;
+    color: var(--accent); background: var(--accent-soft);
+    border-radius: 2px; width: 1.5rem; height: 1.5rem;
+    display: grid; place-items: center;
+  }
+  .outcome {
+    display: grid; gap: .55rem; margin-top: 1.25rem;
+  }
+  .outcome .row {
+    display: grid; grid-template-columns: auto 1fr; gap: .8rem; align-items: baseline;
+    font-size: .96rem;
+  }
+  .outcome .k {
+    font-family: "JetBrains Mono", monospace; font-size: .66rem; font-weight: 600;
+    letter-spacing: .1em; text-transform: uppercase;
+    padding: .16rem .42rem; border-radius: 2px; white-space: nowrap;
+  }
+  .k.a { background: var(--ok-bg); color: var(--ok); }
+  .k.b { background: var(--crit-bg); color: var(--crit); }
+
+  /* ---- prose lists ---- */
+  ul.rules { list-style: none; padding: 0; margin: 0; display: grid; gap: 1.15rem; }
+  ul.rules > li { padding-left: 1.15rem; border-left: 1px solid var(--rule); }
+  ul.rules > li > h3 { margin-bottom: .28rem; }
+  ul.rules > li > p { font-size: .985rem; color: var(--text-dim); }
+  ul.rules > li > p strong { color: var(--text); }
+
+  ul.plain { padding-left: 1.15rem; margin: 0 0 1rem; }
+  ul.plain li { margin-bottom: .5rem; }
+
+  /* ---- tables ---- */
+  .scroll { overflow-x: auto; margin: 0 0 .9rem; }
+  table { border-collapse: collapse; width: 100%; font-size: .95rem; }
+  th, td { text-align: left; padding: .6rem .8rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th {
+    font-size: .66rem; font-weight: 600; text-transform: uppercase; letter-spacing: .11em;
+    color: var(--text-faint); border-bottom: 1px solid var(--text-faint);
+    white-space: nowrap;
+  }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; font-family: "JetBrains Mono", monospace; font-size: .87rem; white-space: nowrap; }
+  tr.total td { border-bottom: none; border-top: 1px solid var(--text-faint); font-weight: 600; padding-top: .7rem; }
+  tr.total td.n { color: var(--accent-ink); }
+  tbody tr.free td.n { color: var(--ok); }
+  caption { caption-side: bottom; text-align: left; font-size: .88rem; color: var(--text-faint); padding-top: .7rem; }
+
+  /* ---- scenario chart ---- */
+  .chart { margin: 1.6rem 0 .6rem; }
+  .chart .scale {
+    position: relative; height: 1.1rem; margin-left: var(--gut); border-bottom: 1px solid var(--rule);
+  }
+  .chart .tick {
+    position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--rule);
+  }
+  .chart .tick span {
+    position: absolute; top: 0; left: .35rem;
+    font-family: "JetBrains Mono", monospace; font-size: .62rem; letter-spacing: .06em;
+    color: var(--text-faint); white-space: nowrap;
+  }
+  .bars { display: grid; gap: .8rem; margin-top: .9rem; }
+  .bar-row { display: grid; grid-template-columns: var(--gut) 1fr; gap: 0; align-items: center; }
+  .chart, .bars { --gut: 11.5rem; }
+  .bar-row .lbl { font-size: .8rem; line-height: 1.25; padding-right: .9rem; }
+  .bar-row .lbl b { font-family: Archivo, sans-serif; font-weight: 600; display: block; font-size: .87rem; }
+  .bar-row .lbl span { color: var(--text-faint); font-family: "JetBrains Mono", monospace; font-size: .66rem; }
+  .track { position: relative; height: 2.05rem; background: var(--surface-2); border: 1px solid var(--rule); }
+  .fill { position: absolute; inset: 0 auto 0 0; display: flex; align-items: center; }
+  .fill i {
+    display: block; height: 100%; width: 100%;
+    background: repeating-linear-gradient(135deg, var(--accent) 0 6px, transparent 6px 12px), var(--accent-soft);
+    border-right: 2px solid var(--accent);
+  }
+  .fill.alt i { background: var(--accent-soft); border-right: 2px solid var(--accent); }
+  .fill em {
+    position: absolute; left: calc(100% + .55rem); top: 50%; transform: translateY(-50%);
+    font-family: "JetBrains Mono", monospace; font-size: .72rem; font-weight: 600; font-style: normal;
+    color: var(--text); white-space: nowrap;
+  }
+  @media (max-width: 33rem) {
+    .bar-row { grid-template-columns: 1fr; gap: .3rem; }
+    .chart .scale { margin-left: 0; }
+    .fill em { position: static; transform: none; margin-left: .55rem; }
+    .fill { justify-content: flex-start; }
+  }
+
+  /* ---- checklist ---- */
+  ol.moves { list-style: none; counter-reset: m -1; padding: 0; margin: 0; display: grid; gap: 0; border-top: 1px solid var(--rule); }
+  ol.moves li { counter-increment: m; border-bottom: 1px solid var(--rule); }
+  ol.moves label {
+    display: grid; grid-template-columns: 1.35rem 2.1rem 1fr; gap: .55rem;
+    align-items: start; padding: .95rem .2rem; cursor: pointer;
+  }
+  ol.moves input { margin: .32rem 0 0; width: 1.05rem; height: 1.05rem; accent-color: var(--accent); }
+  ol.moves .step {
+    font-family: "JetBrains Mono", monospace; font-size: .7rem; font-weight: 600;
+    color: var(--text-faint); padding-top: .28rem;
+  }
+  ol.moves .step::before { content: "0" counter(m); }
+  ol.moves .body { font-size: .99rem; }
+  ol.moves .body b { font-family: Archivo, sans-serif; font-weight: 600; }
+  ol.moves .body span { display: block; color: var(--text-dim); font-size: .93rem; margin-top: .15rem; }
+  ol.moves input:checked ~ .body { opacity: .5; }
+  ol.moves input:checked ~ .body b { text-decoration: line-through; }
+
+  /* ---- sources ---- */
+  .sources { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: .35rem .9rem; font-size: .9rem; padding: 0; list-style: none; margin: 0; }
+  .sources li { border-top: 1px solid var(--rule); padding: .45rem 0; }
+  footer { padding-top: 3.4rem; color: var(--text-faint); font-size: .88rem; }
+  hr.div { border: 0; border-top: 1px solid var(--rule); margin: 3.4rem 0 0; }
+  @media (prefers-reduced-motion: no-preference) {
+    ol.moves .body, ol.moves .body b { transition: opacity .18s ease; }
+  }
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <div class="eyebrow">
+      <span class="dot"></span>
+      <span class="mono-label">Build plan &middot; rev. 8 Sep 2026</span>
+    </div>
+    <h1>Hinglish dictation on free Kaggle</h1>
+    <p class="standfirst">Distilling a 132M on-device dictation model from a Hindi Whisper teacher, on a shared 30&#8209;hour weekly GPU quota. The plan is ordered by <em>what has to be measured before the rest of it means anything</em> &mdash; two gates up front, then a schedule that survives a session disconnect.</p>
+  </header>
+
+  <div class="strip">
+    <div><span class="mono-label">Quota</span><span class="num">30 h<small> / week, shared pool</small></span></div>
+    <div><span class="mono-label">Session cap</span><span class="num">12 h<small> / committed run</small></span></div>
+    <div><span class="mono-label">Compute needed</span><span class="num">~108 h<small> GPU, mid-estimate</small></span></div>
+    <div><span class="mono-label">Wall clock</span><span class="num">12 wk<small> incl. off-GPU work</small></span></div>
+  </div>
+
+  <!-- ============ GATE 0 ============ -->
+  <section id="gate-0">
+    <div class="sec-head">
+      <span class="mono-label">Gate 0 &mdash; measure</span>
+      <h2>How does Kaggle bill a T4&times;2 session?</h2>
+      <p class="lede">The 30 hours is one pool shared across P100 and T4&times;2. Nothing in Kaggle's docs or product announcements says whether the meter charges <strong>session wall&#8209;clock</strong> or <strong>GPU&#8209;hours</strong>. That single fact moves the schedule by about 2&times;, so it is worth 30 minutes of quota to settle it before planning anything else.</p>
+    </div>
+
+    <div class="gate">
+      <span class="gate-tag">Unverified &middot; 30 min of quota</span>
+      <h3>The procedure</h3>
+      <ol class="proc">
+        <li>Verify your phone number on Kaggle first. It gates both accelerators and notebook internet &mdash; without it the GPU dropdown is greyed out and this experiment can't start.</li>
+        <li>Open <code>kaggle.com/settings</code> (or the notebook editor sidebar) and write down the exact GPU hours already used this week. Screenshot it &mdash; the meter rounds, and you want the before value in writing.</li>
+        <li>New notebook &rarr; Accelerator: <b>GPU T4 &times;2</b>. One cell: <code>import torch, time; print(torch.cuda.device_count()); time.sleep(900)</code> with a print every 60&nbsp;s so the cell never goes silent.</li>
+        <li>Run it as <b>Save &amp; Run All (Commit)</b>, not in the interactive tab. This is what you'll use for every real run, so measure the thing you'll actually be billed for.</li>
+        <li>While it runs, try to start a <em>second</em> GPU session. Whether it queues, refuses, or runs tells you the concurrency cap &mdash; free information from the same experiment.</li>
+        <li>When the commit finishes, re-read the meter. Also start a <b>CPU&#8209;only</b> notebook for 15 minutes and check the GPU meter again afterwards &mdash; this confirms the assumption that CPU sessions are free, which the whole workflow below leans on.</li>
+      </ol>
+      <div class="outcome">
+        <div class="row"><span class="k a">+15 min</span><div>Wall&#8209;clock billing. A 12&#8209;hour T4&times;2 commit costs 12 quota&#8209;hours and yields ~24 GPU&#8209;hours. Run everything as DDP inside one dual&#8209;GPU session; never two concurrent single&#8209;GPU sessions, which would bill twice for the same work.</div></div>
+        <div class="row"><span class="k b">+30 min</span><div>Per&#8209;GPU billing. T4&times;2 buys nothing over P100 except VRAM headroom. The ablation block has to be cut from three runs to one, or the project stretches past twelve weeks.</div></div>
+      </div>
+      <div class="blocks">
+        <b>Blocks</b>
+        The whole schedule, and whether the three&#8209;ablation block below is affordable. Do not start data acquisition before this is written down.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ GATE 1 ============ -->
+  <section id="gate-1">
+    <div class="sec-head">
+      <span class="mono-label">Gate 1 &mdash; audit</span>
+      <h2>Can the teacher actually write English?</h2>
+      <p class="lede">This is the finding that reordered the plan. IndicWhisper is <strong>not a Hugging Face repo</strong> &mdash; Vistaar ships <code>hindi_models.zip</code> from e2enetworks object storage, and a community issue asking how to load it has been open since April 2024. The HF&#8209;native substitute is <code>vasista22/whisper-hindi-medium</code>: whisper&#8209;medium base, Speech Lab IIT Madras, 6.82 WER on FLEURS, 80 mel bins &mdash; so the shared feature&#8209;extraction decision survives.</p>
+    </div>
+
+    <div class="gate crit">
+      <span class="gate-tag">Project&#8209;blocker class &middot; ~1 h of quota</span>
+      <h3>Why it can't wait for the smoke test</h3>
+      <p>That checkpoint was fine&#8209;tuned on GramVaani, ULCA, Shrutilipi and FLEURS &mdash; four corpora that are entirely Devanagari, normalised and unpunctuated. If the teacher transliterates Latin&#8209;script English instead of preserving it, then every pseudo&#8209;label is wrong in precisely the dimension a Hinglish dictation model exists to serve, and no student&#8209;side fix recovers it. The same corpora also mean the teacher may have no punctuation to donate &mdash; which is the premise of the whole pseudo&#8209;labelling argument.</p>
+      <h3 style="margin-top:1.25rem">The test</h3>
+      <p>Run the candidate over 30 minutes of genuinely code&#8209;mixed speech and read the output with your own eyes. One utterance decides it:</p>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Spoken</th><th>Pass</th><th>Fail</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="mono">&ldquo;meeting chaar baje hai, Slack pe ping karo&rdquo;</span></td>
+              <td><span class="mono">meeting 4 baje hai, Slack pe ping karo</span></td>
+              <td><span class="mono deva">मीटिंग चार बजे है, स्लैक पे पिंग करो</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <caption>Latin&#8209;script <span class="mono">Slack</span> surviving is the signal. The <span class="mono">chaar &rarr; 4</span> conversion is <em>not</em> the model's job &mdash; that belongs in rule&#8209;based inverse text normalisation downstream.</caption>
+      </div>
+      <div class="blocks">
+        <b>Blocks</b>
+        Your mel configuration. If the audit fails, the teacher reopens to <code>openai/whisper-large-v3</code> or <code>ARTPARK-IISc/whisper-large-v3-vaani-hindi</code> &mdash; both <b>128 mel</b>, which forfeits single&#8209;pass feature extraction and adds a separate student mel stage. Build the cache pipeline only after this resolves.
+      </div>
+    </div>
+
+    <p style="color:var(--text-dim);font-size:.985rem">The same caveat applies to <code>vasista22/whisper-hindi-small</code> as student init. If English is gone, initialise from <code>openai/whisper-small</code> and absorb the extra epochs. Worth noting either way: GramVaani telephone audio is already baked into those weights, so dropping telephone data from the corpus doesn't drop it from the model.</p>
+  </section>
+
+  <!-- ============ CORRECTIONS ============ -->
+  <section id="corrections">
+    <div class="sec-head">
+      <span class="mono-label">Corrections</span>
+      <h2>Two numbers the spec had wrong</h2>
+    </div>
+    <ul class="rules">
+      <li>
+        <h3>The mel cache is 80&times;1000, not 80&times;500</h3>
+        <p>Whisper runs at 100 frames per second (hop 160 at 16&nbsp;kHz), so 30&nbsp;s is 3000 frames and a 10&nbsp;s window is 1000. The 500 is the <strong>post&#8209;convolution encoder</strong> length, one stage later. At 160&nbsp;KB per clip in fp16 that's <strong>11.5&nbsp;GB</strong> for 72,000 clips rather than 5.8. Comfortable inside the 200&nbsp;GB private&#8209;dataset quota &mdash; just don't provision for the smaller figure.</p>
+      </li>
+      <li>
+        <h3>Vaani's 2,043 hours is the transcribed subset, not the corpus</h3>
+        <p>The full collection is 31,255 hours of audio. The Hindi config of <code>ARTPARK-IISc/Vaani-transcription-part</code> holds <strong>963 hours</strong>; all 59 language configs total <strong>234&nbsp;GB</strong>. CC&#8209;BY&#8209;4.0, gated but free &mdash; accept terms and pass a token. You want 120 of those 963 hours, so <strong>stream with an early stop</strong>; pulling the whole config will exhaust the session disk. <code>ai4bharat/IndicVoices</code> is CC&#8209;BY&#8209;4.0 and HF&#8209;hosted, fine as specified.</p>
+      </li>
+    </ul>
+  </section>
+
+  <!-- ============ WORKFLOW ============ -->
+  <section id="workflow">
+    <div class="sec-head">
+      <span class="mono-label">Execution</span>
+      <h2>Working with the grain of the platform</h2>
+      <p class="lede">Nine rules that between them decide whether 108 GPU&#8209;hours of work fits in the quota.</p>
+    </div>
+    <ul class="rules">
+      <li>
+        <h3>Push every non&#8209;GPU stage into CPU notebooks</h3>
+        <p>Kaggle meters GPU and TPU; CPU notebooks appear not to draw on the 30&#8209;hour pool &mdash; <strong>confirm this in Gate&nbsp;0 step&nbsp;6</strong>, because a lot rests on it. CPU sessions give 2&times; Xeon, 32&nbsp;GB RAM, 12 hours. Move download, VAD segmentation, resampling, WER filtering, tokenisation, dataset packing, ITN development and eval scoring there. That deletes the &ldquo;3 GPU hours&rdquo; prep line outright, along with every minute of prep currently hidden inside a GPU session.</p>
+      </li>
+      <li>
+        <h3>Segment to &le;10&nbsp;s on CPU <em>before</em> labelling</h3>
+        <p>This ordering is a prerequisite, not a detail. Use <code>silero-vad</code> in the CPU stage. It's what makes the next rule work at all.</p>
+      </li>
+      <li>
+        <h3>Fuse pseudo&#8209;labelling and mel precompute into one GPU pass</h3>
+        <p>You pay GPU time for labelling regardless; mel extraction rides along in dataloader workers. And because a &le;10&nbsp;s clip's student mel (80&times;1000) is a <strong>prefix</strong> of the teacher's 30&#8209;second padded mel, one FFT serves both models. The original plan reads the audio twice; it only needs to once.</p>
+      </li>
+      <li>
+        <h3>Every long run is a committed run</h3>
+        <p><b>Save &amp; Run All (Commit)</b>, never an interactive tab. Interactive sessions idle&#8209;timeout well short of 12 hours; a commit executes headless and you can close the laptop. Print a heartbeat every N steps &mdash; long silent cells can trip iopub and per&#8209;cell timeouts even while the GPU is busy.</p>
+      </li>
+      <li>
+        <h3>Checkpoint to a private HF Hub repo, not Kaggle output</h3>
+        <p><code>/kaggle/working</code> does persist between runs, but it caps around 20&nbsp;GB and versioning it every 500 steps is clumsy. Use <code>push_to_hub=True</code>, <code>hub_strategy="all_checkpoints"</code>, <code>hub_private_repo=True</code>, <code>save_total_limit=1</code>, then resume from the Hub on session start. Put <code>HF_TOKEN</code> in <b>Add&#8209;ons &rarr; Secrets</b>, never in the notebook body.</p>
+      </li>
+      <li>
+        <h3>Ship the cache as a private Kaggle dataset &mdash; sharded</h3>
+        <p>200&nbsp;GB private quota, 200&nbsp;GB per dataset, and a limit of <strong>50 top&#8209;level files</strong>. So pack into webdataset tars, or a handful of <code>.npy</code> memmaps plus a parquet index &mdash; not 72,000 loose files. Mounts read&#8209;only at <code>/kaggle/input</code> for memory&#8209;mapped reads, exactly as intended.</p>
+      </li>
+      <li>
+        <h3>On T4&times;2, don't use the Trainer default</h3>
+        <p>It falls back to naive model parallelism and leaves one GPU idle for most of the step. Launch DDP through <code>torchrun</code> or <code>accelerate</code>. This is reported directly by the community Whisper fine&#8209;tuning repos that target Kaggle.</p>
+      </li>
+      <li>
+        <h3>Never touch Kaggle TPU</h3>
+        <p>Importing <code>transformers</code> Trainer or pipeline classes crashes TPU sessions &mdash; a known issue, still open. The separate 20 TPU hours per week are simply not usable for this project; don't budget them.</p>
+      </li>
+      <li>
+        <h3>Label with CTranslate2, distil with transformers</h3>
+        <p>Convert the teacher to CTranslate2 and run batched <code>faster-whisper</code>: roughly 4&times; from the backend plus 2&ndash;4&times; from batching, which takes the 20&#8209;hour labelling line down to 6&ndash;10. The caveat that keeps it honest: <strong>CT2 returns no logits</strong>, so use it for the bulk cross&#8209;entropy labels and keep HF transformers for the 50&#8209;hour KL subset only. <code>int8_float16</code> is tuned for Ampere and newer; T4 is Turing, so benchmark it against plain <code>float16</code> on 30 minutes of audio before committing the full pass.</p>
+      </li>
+    </ul>
+  </section>
+
+  <!-- ============ BUDGET ============ -->
+  <section id="budget" class="wide">
+    <div class="sec-head" style="max-width:66ch">
+      <span class="mono-label">Budget</span>
+      <h2>108 GPU&#8209;hours, and the two ways they get charged</h2>
+      <p class="lede">Compute required, in GPU&#8209;hours. What that costs in <em>quota</em>&#8209;hours is what Gate&nbsp;0 decides.</p>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Stage</th><th>Where</th><th class="n">GPU&#8209;hours</th></tr>
+        </thead>
+        <tbody>
+          <tr class="free"><td>Acquisition, VAD segmentation, resample, filter, pack</td><td>CPU session</td><td class="n">0</td></tr>
+          <tr><td>Teacher code&#8209;switch audit <span style="color:var(--text-faint)">(Gate 1)</span> + 5&nbsp;h smoke test</td><td>T4&times;2</td><td class="n">2&ndash;3</td></tr>
+          <tr><td>Fused label + mel + token cache, 200&nbsp;h, CT2 teacher</td><td>T4&times;2</td><td class="n">6&ndash;10</td></tr>
+          <tr><td>Top&#8209;k logit pass, 50&nbsp;h subset, HF transformers</td><td>T4&times;2</td><td class="n">4&ndash;6</td></tr>
+          <tr><td>Main run &mdash; frozen encoder, 4 decoder layers, ~4 epochs</td><td>T4&times;2 DDP</td><td class="n">12&ndash;18</td></tr>
+          <tr><td>Three ablations &mdash; layer count, vocab size, window length</td><td>T4&times;2 DDP</td><td class="n">30&ndash;45</td></tr>
+          <tr><td>KL ablation training</td><td>T4&times;2 DDP</td><td class="n">8&ndash;10</td></tr>
+          <tr><td>Quantisation, ONNX export, sanity evals</td><td>mostly CPU</td><td class="n">2&ndash;3</td></tr>
+          <tr class="free"><td>ITN post&#8209;processor, eval scoring, false&#8209;trigger tests</td><td>CPU session</td><td class="n">0</td></tr>
+          <tr><td>Slack for failed runs and disconnects</td><td>&mdash;</td><td class="n">25&ndash;30</td></tr>
+          <tr class="total"><td>Total compute</td><td></td><td class="n">90&ndash;125</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="chart" style="max-width:66ch">
+      <div class="scale">
+        <span class="tick" style="left:0"><span>0</span></span>
+        <span class="tick" style="left:25%"><span>1 wk / 30 h</span></span>
+        <span class="tick" style="left:50%"><span>2 wk</span></span>
+        <span class="tick" style="left:75%"><span>3 wk</span></span>
+      </div>
+      <div class="bars">
+        <div class="bar-row">
+          <div class="lbl"><b>Wall&#8209;clock billing</b><span>108 GPU&#8209;h &divide; 2</span></div>
+          <div class="track"><div class="fill" style="width:45%"><i></i><em>54 quota&#8209;h &middot; 1.8 wk</em></div></div>
+        </div>
+        <div class="bar-row">
+          <div class="lbl"><b>Per&#8209;GPU billing</b><span>108 GPU&#8209;h &times; 1</span></div>
+          <div class="track"><div class="fill alt" style="width:90%"><i></i><em>108 quota&#8209;h &middot; 3.6 wk</em></div></div>
+        </div>
+      </div>
+      <p style="font-size:.88rem;color:var(--text-faint);margin-top:1.1rem">Both bars use the 108&#8209;hour mid&#8209;estimate on a 0&ndash;120 quota&#8209;hour scale. The wall&#8209;clock figure is a floor, not a forecast: only stages that genuinely scale under DDP get the halving, and the twelve&#8209;week wall&#8209;clock estimate stands either way &mdash; data prep, the app and debugging all happen off&#8209;GPU.</p>
+    </div>
+  </section>
+
+  <!-- ============ UNDERCOSTED ============ -->
+  <section id="undercosted">
+    <div class="sec-head">
+      <span class="mono-label">Still under&#8209;costed</span>
+      <h2>Three things the budget doesn't cover</h2>
+    </div>
+    <ul class="rules">
+      <li>
+        <h3>Getting the audio in</h3>
+        <p>200 hours is roughly 12&ndash;23&nbsp;GB compressed and nothing in the plan accounts for the transfer. Reserve a full CPU session for acquisition and assume you'll redo it once after the first attempt hits a disk or rate limit.</p>
+      </li>
+      <li>
+        <h3>Disk headroom you haven't printed</h3>
+        <p>The ~20&nbsp;GB figure is the <em>output</em> cap; actual session scratch is larger. Run <code>df -h</code> at session start rather than planning around a number nobody has looked at.</p>
+      </li>
+      <li>
+        <h3>The 30&#8209;hour YouTube scrape</h3>
+        <p>Run <code>yt-dlp</code> from the Mac &mdash; Kaggle's egress addresses get throttled and blocked in practice. Terms&#8209;of&#8209;service exposure is yours to accept on a personal project; keep the scrape unpublished, or restrict to Creative&#8209;Commons uploads if you want the option of releasing the corpus later.</p>
+      </li>
+    </ul>
+  </section>
+
+  <!-- ============ MOVES ============ -->
+  <section id="moves">
+    <div class="sec-head">
+      <span class="mono-label">Sequence</span>
+      <h2>First moves</h2>
+      <p class="lede">Each step is cheap and each one can invalidate the next. That's the whole point of the ordering: if step&nbsp;3 fails on 5 hours it will fail on 200, and you'll have spent one quota&#8209;hour finding out instead of forty.</p>
+    </div>
+    <ol class="moves" id="moves-list">
+      <li><label><input type="checkbox" data-k="m0"><span class="step"></span><span class="body"><b>Phone&#8209;verify, then run the meter experiment</b><span>~30 min of quota. Produces the billing answer and the concurrency cap, and confirms CPU sessions are free.</span></span></label></li>
+      <li><label><input type="checkbox" data-k="m1"><span class="step"></span><span class="body"><b>CPU session &mdash; pull and segment 5 hours</b><span>Stream the Hindi config of Vaani&#8209;transcription&#8209;part, take 5 hours, VAD&#8209;segment to &le;10&nbsp;s, push as a private Kaggle dataset. Zero GPU.</span></span></label></li>
+      <li><label><input type="checkbox" data-k="m2"><span class="step"></span><span class="body"><b>GPU ~1&nbsp;h &mdash; audit the teacher, then label</b><span>Read the code&#8209;switch output first; it decides teacher and mel config. Then label the 5 hours, dumping mels and tokens in the same pass. Eyeball 50. Settle the script convention here.</span></span></label></li>
+      <li><label><input type="checkbox" data-k="m3"><span class="step"></span><span class="body"><b>GPU ~1&nbsp;h &mdash; smoke&#8209;test the cut student</b><span>Copy maximally spaced decoder layers down to 4, train on the 5 hours, confirm loss drops <em>and</em> English words survive. Push to a private Hub repo, which also proves the checkpoint&#8209;and&#8209;resume path before you need it.</span></span></label></li>
+      <li><label><input type="checkbox" data-k="m4"><span class="step"></span><span class="body"><b>Only then scale to 200 hours</b><span>Vaani ~120&nbsp;h, IndicVoices ~50&nbsp;h, scraped Hinglish ~30&nbsp;h. Pseudo&#8209;label all of it for uniform label style; drop anything above 20% teacher WER against a human reference, and use teacher entropy as the proxy filter on the scraped audio.</span></span></label></li>
+    </ol>
+  </section>
+
+  <hr class="div">
+  <footer>
+    <span class="mono-label" style="display:block;margin-bottom:.9rem">Sources</span>
+    <ul class="sources">
+      <li><a href="https://github.com/AI4Bharat/vistaar">AI4Bharat / Vistaar</a></li>
+      <li><a href="https://github.com/AI4Bharat/vistaar/issues/4">Vistaar issue #4 &mdash; loading IndicWhisper</a></li>
+      <li><a href="https://huggingface.co/vasista22/whisper-hindi-medium">vasista22/whisper-hindi-medium</a></li>
+      <li><a href="https://huggingface.co/vasista22/whisper-hindi-small">vasista22/whisper-hindi-small</a></li>
+      <li><a href="https://huggingface.co/parthiv11/indic_whisper_nodcil">parthiv11/indic_whisper_nodcil</a></li>
+      <li><a href="https://huggingface.co/datasets/ARTPARK-IISc/Vaani-transcription-part">ARTPARK-IISc/Vaani-transcription-part</a></li>
+      <li><a href="https://huggingface.co/datasets/ai4bharat/IndicVoices">ai4bharat/IndicVoices</a></li>
+      <li><a href="https://huggingface.co/ARTPARK-IISc/whisper-large-v3-vaani-hindi">whisper-large-v3-vaani-hindi</a></li>
+      <li><a href="https://github.com/huggingface/distil-whisper/blob/main/training/README.md">Distil-Whisper training README</a></li>
+      <li><a href="https://github.com/phineas-pta/fine-tune-whisper-vi/blob/main/README.md">fine-tune-whisper-vi &mdash; Kaggle gotchas</a></li>
+      <li><a href="https://github.com/vasistalodagala/whisper-finetune">vasistalodagala/whisper-finetune</a></li>
+      <li><a href="https://huggingface.co/blog/kaggle-integration">HF &times; Kaggle integration</a></li>
+      <li><a href="https://www.kaggle.com/product-feedback/173129">Kaggle floating GPU quota</a></li>
+      <li><a href="https://www.kaggle.com/product-announcements/512322">Kaggle private dataset quota</a></li>
+      <li><a href="https://mobiusml.github.io/batched_whisper_blog/">Batched Whisper speedups</a></li>
+      <li><a href="https://github.com/SYSTRAN/faster-whisper">SYSTRAN/faster-whisper</a></li>
+    </ul>
+  </footer>
+</div>
+
+<script>
+  (function () {
+    var list = document.getElementById('moves-list');
+    if (!list) return;
+    var boxes = list.querySelectorAll('input[type=checkbox]');
+    function read(k) { try { return localStorage.getItem('wd:' + k) === '1'; } catch (e) { return false; } }
+    function write(k, v) { try { localStorage.setItem('wd:' + k, v ? '1' : '0'); } catch (e) {} }
+    boxes.forEach(function (b) {
+      if (read(b.dataset.k)) b.checked = true;
+      b.addEventListener('change', function () { write(b.dataset.k, b.checked); });
+    });
+  })();
+</script>

@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Local secrets — HF_TOKEN and KAGGLE creds live in Kaggle Secrets, never here
+.env
+kaggle.json
+*.token
+
+# Data + model artifacts: everything real lives in a private Kaggle dataset or HF Hub repo
+data/
+cache/
+mels/
+checkpoints/
+runs/
+wandb/
+*.wav
+*.mp3
+*.flac
+*.opus
+*.npy
+*.npz
+*.parquet
+*.tar
+*.onnx
+*.pt
+*.bin
+*.safetensors
+
+# Keep the eval-set manifests, never the recordings
+!eval_set/manifest*.jsonl
+
+# macOS
+.DS_Store

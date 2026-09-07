@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "whisper-distill"
+version = "0.1.0"
+description = "Distil a 30x-smaller Hinglish dictation model from a Hindi Whisper teacher, on free-tier Kaggle GPU"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+# Installed in CPU Kaggle sessions: acquisition, segmentation, packing, scoring
+cpu = [
+    "datasets>=2.18",
+    "soundfile>=0.12",
+    "librosa>=0.10",
+    "pyarrow>=15",
+    "torch>=2.1",          # silero-vad only; CPU wheel is enough
+    "tqdm>=4.66",
+]
+# Installed in GPU Kaggle sessions: labelling, training
+gpu = [
+    "torch>=2.1",
+    "transformers>=4.40",
+    "accelerate>=0.30",
+    "datasets>=2.18",
+    "faster-whisper>=1.0",  # CTranslate2 teacher for the bulk labelling pass
+    "ctranslate2>=4.0",
+    "huggingface_hub>=0.23",
+    "pyarrow>=15",
+]
+dev = ["pytest>=8", "ruff>=0.4"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

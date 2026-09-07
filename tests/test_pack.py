@@ -158,3 +158,66 @@ def test_entropy_threshold_is_calibrated_to_the_wer_keep_rate():
     entropies = [0.1, 0.5, 0.9, 2.0, 3.0]
     keeps = [True, True, True, False, False]
     assert calibrate_entropy_threshold(entropies, keeps) == 0.9
+
+
+# ------------------------------------------------------- version-agnostic audio decoding
+def test_datasets_3x_dict_is_decoded_and_resampled():
+    from whisper_distill.data.audio_io import decode_audio_field
+
+    wav, how = decode_audio_field(
+        {"array": np.ones(8000, dtype=np.float32), "sampling_rate": 8000}
+    )
+    assert how == "dict_array"
+    assert len(wav) == 16000  # 8 kHz -> 16 kHz
+
+
+def test_datasets_4x_audiodecoder_is_decoded_and_downmixed():
+    """datasets 4.0 returns a torchcodec AudioDecoder, not a dict."""
+    from whisper_distill.data.audio_io import decode_audio_field
+
+    class _Samples:
+        data = np.ones((2, 4000), dtype=np.float32)  # (channels, n)
+        sample_rate = 16000
+
+    class _Decoder:
+        def get_all_samples(self):
+            return _Samples()
+
+    wav, how = decode_audio_field(_Decoder())
+    assert how == "audio_decoder"
+    assert wav.shape == (4000,)
+
+
+def test_unknown_audio_field_raises_rather_than_guessing():
+    from whisper_distill.data.audio_io import decode_audio_field
+
+    with pytest.raises(TypeError, match="unrecognised audio field"):
+        decode_audio_field(object())
+
+
+def test_mono_downmix_handles_both_axis_orders():
+    """soundfile gives (n, channels); torchcodec gives (channels, n)."""
+    from whisper_distill.data.audio_io import to_mono
+
+    assert to_mono(np.ones((2, 500))).shape == (500,)
+    assert to_mono(np.ones((500, 2))).shape == (500,)
+    assert to_mono(np.ones(500)).shape == (500,)
+    with pytest.raises(ValueError):
+        to_mono(np.ones((2, 2, 2)))
+
+
+def test_schema_probe_names_the_missing_column():
+    """An empty transcript silently disables step 2's WER filter, so fail loudly."""
+    from whisper_distill.data.audio_io import probe_schema
+
+    row = {"audio": {"array": np.zeros(1), "sampling_rate": 16000}, "transcript": "hi"}
+    assert "array" in probe_schema(row)
+    with pytest.raises(KeyError, match="transcript"):
+        probe_schema({"audio": row["audio"]})
+
+
+def test_resample_is_a_noop_at_the_target_rate():
+    from whisper_distill.data.audio_io import resample
+
+    x = np.arange(100, dtype=np.float32)
+    assert np.array_equal(resample(x, 16000, 16000), x)

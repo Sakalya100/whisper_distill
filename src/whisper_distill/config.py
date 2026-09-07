@@ -192,12 +192,14 @@ class KaggleConfig:
     #: billing turns out to be per-session wall-clock.
     max_concurrent_gpu_sessions: int = 2
 
+    #: Confirmed 2026-09-08: a CPU-only session left the GPU meter untouched. This is the
+    #: assumption the whole budget rests on -- acquisition, VAD segmentation, WER
+    #: filtering, tokenisation, shard packing, ITN and eval scoring all cost zero quota.
+    cpu_sessions_are_free: bool = True
+
     # --- still unverified; settled by kaggle/00_quota_probe.py
     #: Does a T4x2 session bill wall-clock or GPU-hours? ~2x schedule impact.
     t4x2_bills_wall_clock: bool | None = None
-
-    #: Assumed True; the whole "prep on CPU" strategy rests on it.
-    cpu_sessions_are_free: bool | None = None
 
 
 @dataclass(frozen=True)

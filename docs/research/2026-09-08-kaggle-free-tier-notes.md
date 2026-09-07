@@ -31,8 +31,9 @@ Append-only. Later passes get their own file.
 
 - `[UNVERIFIED]` **Does a T4×2 session bill wall-clock or GPU-hours?** Not documented
   anywhere I could find, including the floating-quota announcement. ~2× schedule impact.
-- `[UNVERIFIED]` **Do CPU-only sessions consume the GPU pool?** Widely assumed not to.
-  The entire "push prep to CPU" strategy rests on it, so it gets measured, not assumed.
+- **RESOLVED: CPU-only sessions do not consume the GPU pool.** Measured -- a CPU session
+  ran and the GPU meter did not move. The entire "push prep to CPU" strategy is sound, and
+  every zero in the budget table is a real zero.
 - `[UNVERIFIED]` **Actual scratch disk on a GPU session.** The 20 GB figure is the *output*
   cap. Print `df -h`.
 

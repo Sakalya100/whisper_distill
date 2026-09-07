@@ -72,10 +72,23 @@ per-GPU predicts `+40` — a factor of two, no concurrency confound, and startup
 cannot bridge the gap. Costs 20–40 min of a 30-hour week. A P100 probe cannot substitute:
 with one GPU both hypotheses predict the same delta.
 
-### Still open
+### Confirmed: CPU sessions are free
 
-`[UNVERIFIED]` **Are CPU sessions free?** The load-bearing assumption of the workflow
-below. Run a CPU-only notebook for 15 minutes and check whether the GPU meter moves.
+A CPU-only session left the GPU meter untouched. This was the load-bearing assumption of
+the whole workflow, and it holds. Consequences, all real rather than hoped-for:
+
+- Every `0` in the budget table below is genuinely zero, not rounded down.
+- **Step 1 is unblocked now**, independent of how Gate 0 resolves — acquisition and
+  segmentation cost no quota, so there is no reason to wait on the billing question.
+- CPU sessions are also concurrent (≥2, same as GPU) and run 12 h each, so the 200-hour
+  acquisition stage — the item flagged as under-costed — can be split across parallel
+  sessions by source or by shard range at no cost.
+
+The corollary is a discipline, not a nicety: **anything that does not need a GPU must not
+run in a GPU session.** A stray `librosa.load` inside a training notebook is quota spent on
+work that was available for free.
+
+### Still open
 
 `[UNVERIFIED]` **Actual scratch disk on a GPU session.** The ~20 GB figure is the *output*
 cap. Print `df -h`.

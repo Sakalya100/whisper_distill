@@ -323,9 +323,12 @@
       </div>
     </div>
 
-    <div class="gate">
-      <span class="gate-tag">Also still open</span>
-      <p style="margin-bottom:0"><b>Are CPU sessions free?</b> The load&#8209;bearing assumption of the workflow below. Run a CPU&#8209;only notebook for 15 minutes and check whether the GPU meter moves. And print <span class="mono">df -h</span> &mdash; the ~20&nbsp;GB figure is the <em>output</em> cap, not the scratch disk.</p>
+    <div class="gate" style="border-left-color:var(--ok)">
+      <span class="gate-tag" style="background:var(--ok-bg);color:var(--ok);border-color:var(--ok)">Confirmed &middot; CPU is free</span>
+      <h3>The assumption the budget rests on holds</h3>
+      <p>A CPU&#8209;only session left the GPU meter untouched. So every <span class="mono">0</span> in the budget table is genuinely zero, and <b>step 1 is unblocked now</b> &mdash; acquisition and segmentation cost no quota, so there is no reason to wait on the billing question.</p>
+      <p>CPU sessions are also concurrent and run 12&nbsp;h each, which means the 200&#8209;hour acquisition stage &mdash; the item flagged below as under&#8209;costed &mdash; can be split across parallel sessions by source or shard range at no cost.</p>
+      <p style="margin-bottom:0">The corollary is a discipline: <b>anything that does not need a GPU must not run in a GPU session.</b> A stray audio decode inside a training notebook is quota spent on work that was available for free. Still to print: <span class="mono">df -h</span> &mdash; the ~20&nbsp;GB figure is the <em>output</em> cap, not the scratch disk.</p>
     </div>
   </section>
 

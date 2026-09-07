@@ -274,10 +274,11 @@
   <header class="masthead">
     <div class="eyebrow">
       <span class="dot"></span>
-      <span class="mono-label">Build plan &middot; rev. 8 Sep 2026</span>
+      <span class="mono-label">Build plan &middot; gate 0 in progress &middot; 8 Sep 2026</span>
     </div>
     <h1>Hinglish dictation on free Kaggle</h1>
-    <p class="standfirst">Distilling a 132M on-device dictation model from a Hindi Whisper teacher, on a shared 30&#8209;hour weekly GPU quota. The plan is ordered by <em>what has to be measured before the rest of it means anything</em> &mdash; two gates up front, then a schedule that survives a session disconnect.</p>
+    <p class="standfirst" style="margin-bottom:1rem">Distilling a 132M on-device dictation model from a Hindi Whisper teacher, on a shared 30&#8209;hour weekly GPU quota. The plan is ordered by <em>what has to be measured before the rest of it means anything</em> &mdash; two gates up front, then a schedule that survives a session disconnect.</p>
+    <p class="standfirst" style="font-size:.95rem"><span class="mono-label">Repo</span> &nbsp;<a href="https://github.com/Sakalya100/whisper_distill" class="mono">github.com/Sakalya100/whisper_distill</a></p>
   </header>
 
   <div class="strip">
@@ -295,24 +296,31 @@
       <p class="lede">The 30 hours is one pool shared across P100 and T4&times;2. Nothing in Kaggle's docs or product announcements says whether the meter charges <strong>session wall&#8209;clock</strong> or <strong>GPU&#8209;hours</strong>. That single fact moves the schedule by about 2&times;, so it is worth 30 minutes of quota to settle it before planning anything else.</p>
     </div>
 
+    <div class="gate" style="border-left-color:var(--ok)">
+      <span class="gate-tag" style="background:var(--ok-bg);color:var(--ok);border-color:var(--ok)">Confirmed 8 Sep 2026</span>
+      <h3>What the account already tells us</h3>
+      <p>Phone verification <b>Verified</b>. GPU <span class="mono">00:00 / 30 hrs</span>, TPU <span class="mono">00:00 / 20 hrs</span> &mdash; a clean zero baseline, which is the ideal before&#8209;value. Private datasets <span class="mono">700.48 MB / 214.75 GB</span>, which is 200&nbsp;GiB reported in decimal, so there is no extra headroom to plan for.</p>
+      <p style="margin-bottom:0"><b>Concurrency cap is at least 2.</b> Two notebooks, both <span class="mono">Version #1 with GPU T4 x2</span>, ran side by side. That question is settled without a separate experiment.</p>
+    </div>
+
     <div class="gate">
-      <span class="gate-tag">Unverified &middot; 30 min of quota</span>
-      <h3>The procedure</h3>
-      <ol class="proc">
-        <li>Verify your phone number on Kaggle first. It gates both accelerators and notebook internet &mdash; without it the GPU dropdown is greyed out and this experiment can't start.</li>
-        <li>Open <code>kaggle.com/settings</code> (or the notebook editor sidebar) and write down the exact GPU hours already used this week. Screenshot it &mdash; the meter rounds, and you want the before value in writing.</li>
-        <li>New notebook &rarr; Accelerator: <b>GPU T4 &times;2</b>. One cell: <code>import torch, time; print(torch.cuda.device_count()); time.sleep(900)</code> with a print every 60&nbsp;s so the cell never goes silent.</li>
-        <li>Run it as <b>Save &amp; Run All (Commit)</b>, not in the interactive tab. This is what you'll use for every real run, so measure the thing you'll actually be billed for.</li>
-        <li>While it runs, try to start a <em>second</em> GPU session. Whether it queues, refuses, or runs tells you the concurrency cap &mdash; free information from the same experiment.</li>
-        <li>When the commit finishes, re-read the meter. Also start a <b>CPU&#8209;only</b> notebook for 15 minutes and check the GPU meter again afterwards &mdash; this confirms the assumption that CPU sessions are free, which the whole workflow below leans on.</li>
-      </ol>
-      <div class="outcome">
-        <div class="row"><span class="k a">+15 min</span><div>Wall&#8209;clock billing. A 12&#8209;hour T4&times;2 commit costs 12 quota&#8209;hours and yields ~24 GPU&#8209;hours. Run everything as DDP inside one dual&#8209;GPU session; never two concurrent single&#8209;GPU sessions, which would bill twice for the same work.</div></div>
-        <div class="row"><span class="k b">+30 min</span><div>Per&#8209;GPU billing. T4&times;2 buys nothing over P100 except VRAM headroom. The ablation block has to be cut from three runs to one, or the project stretches past twelve weeks.</div></div>
+      <span class="gate-tag">Measuring &middot; two concurrent commits</span>
+      <h3>Decoding the meter</h3>
+      <p>The probe ran as <b>two</b> concurrent T4&times;2 commits rather than one, so the delta has two candidate readings for <span class="mono">N</span> sessions of <span class="mono">T</span> minutes each.</p>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Meter delta</th><th>Verdict</th><th class="n">Budget</th></tr></thead>
+          <tbody>
+            <tr><td><span class="mono">&asymp; N&times;T</span> &nbsp;(2&times;15 = <b>30 min</b>)</td><td>wall&#8209;clock billing &mdash; a 12&nbsp;h commit costs 12 quota&#8209;h and yields ~24 GPU&#8209;h. Run everything DDP inside <em>one</em> dual&#8209;GPU session.</td><td class="n">54 h<br>1.8 wk</td></tr>
+            <tr><td><span class="mono">&asymp; N&times;T&times;2</span> (2&times;15&times;2 = <b>60 min</b>)</td><td>per&#8209;GPU billing &mdash; T4&times;2 buys only VRAM headroom. Cut the ablation block from three runs to one.</td><td class="n">108 h<br>3.6 wk</td></tr>
+            <tr><td>near the <b>45 min</b> midpoint</td><td>inconclusive &mdash; almost always unequal session runtimes. Re&#8209;run as a single 30&#8209;minute commit with nothing else active.</td><td class="n">&mdash;</td></tr>
+          </tbody>
+        </table>
+        <caption>Two caveats on reading it: both sessions must have run the <em>same</em> duration for the delta to decode, and a committed run pays container startup and teardown on top of the cell&rsquo;s own runtime &mdash; so take each notebook&rsquo;s duration from its version history, not from the sleep length.</caption>
       </div>
       <div class="blocks">
-        <b>Blocks</b>
-        The whole schedule, and whether the three&#8209;ablation block below is affordable. Do not start data acquisition before this is written down.
+        <b>Still open</b>
+        <b style="margin-top:.5rem">Are CPU sessions free?</b> The load&#8209;bearing assumption of the workflow below. Run a CPU&#8209;only notebook for 15 minutes and check whether the GPU meter moves. And print <span class="mono">df -h</span> &mdash; the ~20&nbsp;GB figure is the <em>output</em> cap, not the scratch disk.
       </div>
     </div>
   </section>

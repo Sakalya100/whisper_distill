@@ -13,13 +13,16 @@ venv/
 kaggle.json
 *.token
 
-# Data + model artifacts: everything real lives in a private Kaggle dataset or HF Hub repo
-data/
-cache/
-mels/
-checkpoints/
-runs/
-wandb/
+# Data + model artifacts: everything real lives in a private Kaggle dataset or HF Hub repo.
+# NOTE the leading slash on every one of these. An unanchored `data/` also matches
+# src/whisper_distill/data/, which silently kept the entire data package out of the repo
+# until a Kaggle run failed on ModuleNotFoundError.
+/data/
+/cache/
+/mels/
+/checkpoints/
+/runs/
+/wandb/
 *.wav
 *.mp3
 *.flac

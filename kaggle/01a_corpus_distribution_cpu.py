@@ -31,10 +31,15 @@ from collections import Counter
 from pathlib import Path
 
 N_ROWS = 400           # ~3-5 min. Enough for stable deciles, cheap enough to redo.
+
+# Swap these to profile another source. The window length must be decided from the
+# COMBINED distribution weighted by the final source mix, not from Vaani alone.
 DATASET = "ARTPARK-IISc/Vaani-transcription-part"
 CONFIG = "Hindi"
 SPLIT = "train"
-OUT = Path("/kaggle/working/corpus_profile.json")
+TRANSCRIPT_KEY = "transcript"   # IndicVoices may name this differently -- the probe says so
+
+OUT = Path(f"/kaggle/working/corpus_profile_{DATASET.split('/')[-1]}_{CONFIG}.json")
 REPO_SRC = "/kaggle/working/whisper_distill/src"
 
 sys.path.insert(0, REPO_SRC)
@@ -56,6 +61,7 @@ def main() -> None:
 
     from whisper_distill.config import DEFAULT
     from whisper_distill.data.audio_io import decode_audio_field
+    from whisper_distill.data.streaming import take
     from whisper_distill.evaluation.metrics import code_mix_bucket, code_mix_density
 
     audio_cfg = DEFAULT.audio
@@ -74,9 +80,11 @@ def main() -> None:
     start = time.time()
 
     print(f"profiling {N_ROWS} rows of {DATASET}:{CONFIG}:{SPLIT}\n", flush=True)
-    for i, row in enumerate(ds):
-        if i >= N_ROWS:
-            break
+    # take() rather than `for row in ds` + break: abandoning the stream mid-download
+    # leaves hub retry threads and FFmpeg workers running into interpreter shutdown, which
+    # surfaces as a fatal PyGILState_Release error. Harmless after the work is flushed, but
+    # on Kaggle a fatal error can mark the commit failed and block dataset creation.
+    for i, row in enumerate(take(ds, N_ROWS)):
         try:
             wav, how = decode_audio_field(row["audio"], target_sr=audio_cfg.sample_rate)
         except Exception as e:  # noqa: BLE001
@@ -85,7 +93,7 @@ def main() -> None:
         decode_paths[how] += 1
         durations.append(len(wav) / audio_cfg.sample_rate)
 
-        t = (row.get("transcript") or "").strip()
+        t = (row.get(TRANSCRIPT_KEY) or "").strip()
         if not t:
             n_empty += 1
             continue

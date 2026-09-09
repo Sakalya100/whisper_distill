@@ -270,6 +270,13 @@ be indexed to the kept token ids and renormalised first. Implemented once in
 `training/distill_loss.py` and asserted in tests — see
 [decision 0003](decisions/0003-ce-first-kl-as-ablation.md).
 
+**Window length is not settled.** Vaani's measured median clip is 2.60 s, so a 10 s window
+is ~74% padding — and Whisper pays the full window cost regardless of speech content. But
+the window must serve dictation (3–10 s), not the training corpus. Held open in
+[decision 0004](decisions/0004-input-window-length.md) pending an IndicVoices profile;
+the mel cache is not written until it closes, because rewriting 11.5 GB of shards is a
+GPU-hour expense and this is a free CPU-hour question.
+
 **Note the 30 s → 10 s risk.** Whisper was only ever trained on 30-second zero-padded
 input. Slicing the encoder's positional embeddings to 1000 frames is architecturally clean
 but off-distribution; expect degradation that fine-tuning has to recover. This is why
@@ -283,7 +290,7 @@ Target ~200 hours. At this compute, quota is the bottleneck, not data volume.
 
 | Source | Hours | Notes |
 |---|---:|---|
-| `ARTPARK-IISc/Vaani-transcription-part` (Hindi) | ~120 | 963 h available, CC-BY-4.0, gated. Stream with early stop. |
+| `ARTPARK-IISc/Vaani-transcription-part` (Hindi) | ~120 | 963 h available, CC-BY-4.0, gated. Stream with early stop. **Measured over 400 rows:** median clip 2.60 s (p90 6.35 s), 68.2% of transcripts contain Latin script, 0 commas. Genuinely code-mixed; pre-segmented short utterances. |
 | `ai4bharat/IndicVoices` (Hindi) | ~50 | Spontaneous/extempore — closest to what dictation sounds like. CC-BY-4.0, gated. |
 | Scraped Hinglish (tech reviews, podcasts, vlogs) | ~30 | Where dense natural code-switching lives. No dataset provides this. |
 

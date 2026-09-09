@@ -58,12 +58,65 @@ rebalancing the 120/50/30 hour split toward IndicVoices and scraped audio — an
 immediately, that **Gate 1's code-switch audit cannot be run on Vaani clips**, because
 there would be no code-switching in them to test against.
 
-## Status: n=1 decides nothing
+## Measured over 400 rows — one conclusion above was wrong
 
-Both observations come from a single row. `kaggle/01a_corpus_distribution_cpu.py` profiles
-400 rows (~3–5 min, free) and reports duration deciles, transcript length, Latin-script
-rate and code-mix density, with an explicit read-out of what each outcome implies for the
-window design and the data split.
+Profiled 400 rows (0.377 h of audio) in 0.3 min on a free CPU session.
 
-**Run 01a before 01.** Getting 5 hours of the wrong-shaped audio costs nothing in quota but
-sends step 2 down a path chosen on one sample.
+### Audio duration
+
+| | p10 | p25 | median | p75 | p90 | max | mean |
+|---|---|---|---|---|---|---|---|
+| seconds | 1.71 | 2.13 | **2.60** | 3.79 | 6.35 | 14.61 | 3.40 |
+
+Only **2.0%** (8/400) exceed 10 s. All 400 decoded via the `audio_decoder` path.
+
+**The short-utterance observation holds.** Median 2.60 s against a 10 s window is ~74%
+padding — and padding is not free, because Whisper pays the full window cost regardless of
+how much of it is speech. There is a real tail though: p90 is 6.35 s and the max is 14.6 s,
+so the corpus is not uniformly tiny.
+
+### Transcripts
+
+| | value |
+|---|---|
+| empty | **0 / 400** |
+| median words | 8 |
+| **contains Latin script** | **273 / 400 (68.2%)** |
+| contains danda `।` | 307 / 400 |
+| **contains comma** | **0 / 400** |
+| mean code-mix density | 0.157 |
+| buckets | hindi_dominant 192 · balanced 181 · dense 27 |
+
+### Correction: Vaani Hindi *is* meaningfully code-mixed
+
+The n=1 note above inferred from one pure-Devanagari transcript that Vaani Hindi might be
+essentially monolingual, and that Gate 1's audit therefore could not run on it. **That was
+wrong.** 68.2% of transcripts contain Latin script, mean code-mix density is 0.157, and 208
+of 400 (52%) fall in the balanced-or-dense buckets.
+
+Consequences of the correction:
+
+- The **120 h Vaani allocation stands.** No rebalancing needed on code-mixing grounds.
+- **Gate 1's audit can be run on Vaani clips** — filter to the `dense` and `balanced`
+  buckets, which `02_audit_and_label_gpu.py` already does via `code_mix_bucket`.
+- A cheap source of genuinely code-mixed Hindi audio with references exists, which is
+  better than the plan assumed.
+
+### Zero commas out of 400 — this sharpens Gate 1
+
+References carry a sentence-final danda (307/400) and **no commas at all**. So the human
+labels have essentially no intra-sentence punctuation, which is precisely the gap
+pseudo-labelling is supposed to fill. That makes the Gate 1 question concrete and testable:
+**does the teacher emit commas?** If it does, the pseudo-labelling premise is confirmed on
+real numbers rather than assumed. If it does not, the premise is weaker than the plan
+claims and the writeup must say so.
+
+## Still open: the window length
+
+Do **not** size the window from Vaani. It is pre-segmented short utterances — good acoustic
+and speaker coverage, but not utterance-length coverage — while the target task, dictation,
+runs 3–10 s. Sizing to a 2.6 s median would build a model that fails on the real input.
+
+Next: profile `ai4bharat/IndicVoices` with the same script (swap `DATASET`/`CONFIG` at the
+top) and decide the window from the **combined** distribution weighted by the final source
+mix. See [decision 0004](../decisions/0004-input-window-length.md).

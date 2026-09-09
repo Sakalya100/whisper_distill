@@ -109,6 +109,7 @@ def main() -> None:
     from whisper_distill.config import DEFAULT
     from whisper_distill.data.audio_io import decode_audio_field, probe_schema
     from whisper_distill.data.segment import Segment, merge_to_window
+    from whisper_distill.data.streaming import take
 
     audio_cfg, data_cfg = DEFAULT.audio, DEFAULT.data
     token = UserSecretsClient().get_secret("HF_TOKEN")
@@ -123,7 +124,7 @@ def main() -> None:
     # filter, which is worse than a crash because it looks like it worked.
     print(f"probing {DATASET}:{CONFIG}:{SPLIT} ...", flush=True)
     probe = load_dataset(DATASET, CONFIG, split=SPLIT, streaming=True, token=token)
-    first = next(iter(probe))
+    first = next(iter(take(probe, 1)))
     print(f"columns     : {sorted(first)}")
     print(f"audio field : {probe_schema(first)}")
     print(f"transcript  : {first.get('transcript', '')[:90]!r}")
@@ -151,7 +152,10 @@ def main() -> None:
 
     print(f"\nstreaming for {TARGET_HOURS} h of speech ...\n", flush=True)
     try:
-        for row_i, row in enumerate(ds):
+        # take() closes the stream cleanly. Without it, a fatal PyGILState_Release at
+        # interpreter shutdown can mark the Kaggle commit as failed -- which would block
+        # "Create Dataset from Output" and throw away the whole run's work.
+        for row_i, row in enumerate(take(ds)):
             if kept_s >= target_s:
                 break
             if row_i < SKIP_ROWS or row_i in done_rows:

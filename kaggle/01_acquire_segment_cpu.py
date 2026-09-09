@@ -42,7 +42,7 @@ DATASET = "ARTPARK-IISc/Vaani-transcription-part"
 CONFIG = "Hindi"
 SPLIT = "train"        # Vaani exposes train / validation / test
 OUT = Path("/kaggle/working/vaani_hi_segmented")
-REPO_SRC = "/kaggle/working/whisper_distill/src"
+REPO_SRC = "/kaggle/working/whisper_distill/src"  # /kaggle/tmp/... keeps it out of the output
 # --------------------------------------------------------------------------------------
 
 sys.path.insert(0, REPO_SRC)

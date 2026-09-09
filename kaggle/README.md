@@ -27,9 +27,46 @@ and whether it burns quota.
 
 ## Installing the package inside a notebook
 
+**If the repo is public** — one line, nothing to configure:
+
 ```python
 !git clone -q https://github.com/Sakalya100/whisper_distill.git /kaggle/working/whisper_distill
-%pip install -q -e /kaggle/working/whisper_distill
 ```
 
-Or, without cloning, add the repo as a Kaggle dataset and `sys.path.insert(0, ".../src")`.
+**If the repo is private**, a plain HTTPS clone stops at `Username for 'https://github.com':`
+and the cell hangs forever waiting on stdin that a notebook never provides. Put a GitHub
+PAT (scope: `repo`, read is enough) in **Add-ons → Secrets** as `GH_TOKEN` and build the
+URL in Python, so the token never appears in a cell, in the output, or in the saved
+notebook:
+
+```python
+from kaggle_secrets import UserSecretsClient
+import subprocess
+
+tok = UserSecretsClient().get_secret("GH_TOKEN")
+subprocess.run(
+    ["git", "clone", "-q",
+     f"https://{tok}@github.com/Sakalya100/whisper_distill.git",
+     "/kaggle/working/whisper_distill"],
+    check=True,
+)
+```
+
+Never write the token into a `!git clone` shell line — Kaggle saves cell source *and*
+output with the notebook version, so a token pasted there is committed to the notebook and
+visible to anyone the notebook is shared with.
+
+Then, in either case:
+
+```python
+import sys
+sys.path.insert(0, "/kaggle/working/whisper_distill/src")
+```
+
+`sys.path.insert` rather than `pip install -e`: the editable install adds nothing here and
+costs a dependency-resolution round trip at the start of every session.
+
+**Caveat if you clone into `/kaggle/working`:** the repo becomes part of the notebook's
+saved output on every commit, eating into the ~20 GB cap and cluttering the dataset you
+publish from it. Clone into `/kaggle/tmp` instead for the stages that publish a dataset,
+and adjust `REPO_SRC` at the top of the script to match.

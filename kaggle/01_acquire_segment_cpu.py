@@ -17,11 +17,13 @@ WHY STREAMING
   an early break pulls only what we consume; materialising the config would exhaust the
   session disk long before it finished.
 
-WHY decode=False
-  datasets 4.0 changed the Audio feature to return a torchcodec AudioDecoder, which needs
-  a matching torch build and a system FFmpeg. Casting to Audio(decode=False) hands us raw
-  bytes instead and we decode with soundfile, which is stable across versions.
-  data/audio_io.py handles every shape anyway, so this is belt and braces.
+ON THE DECODE PATH
+  Kaggle's image has datasets 4.x and the probe confirmed torchcodec works here: the audio
+  field arrives as an AudioDecoder and decode_audio_field handles it natively. So we use
+  that path rather than casting to Audio(decode=False) -- the cast would route through
+  soundfile, which is a branch nothing has exercised on Vaani's actual audio format.
+  Prefer the branch with evidence behind it. audio_io.py still handles all four shapes, so
+  a future image change degrades rather than breaks.
 
 SCALE-UP NOTE
   At 5 h this writes ~600 MB of FLAC, comfortably inside the ~20 GB notebook output cap.
@@ -101,7 +103,7 @@ def main() -> None:
     import numpy as np
     import soundfile as sf
     import torch
-    from datasets import Audio, load_dataset
+    from datasets import load_dataset
     from kaggle_secrets import UserSecretsClient
 
     from whisper_distill.config import DEFAULT
@@ -131,8 +133,10 @@ def main() -> None:
     del probe, first
 
     # ------------------------------------------------------------------------- the stream
+    # No cast_column here. The probe showed torchcodec decodes this corpus fine on the
+    # Kaggle image, and decode_audio_field takes the AudioDecoder branch natively. See
+    # ON THE DECODE PATH above for why the decode=False cast was dropped.
     ds = load_dataset(DATASET, CONFIG, split=SPLIT, streaming=True, token=token)
-    ds = ds.cast_column("audio", Audio(decode=False))  # bypass torchcodec; see docstring
 
     print("loading silero-vad ...", flush=True)
     model, utils = torch.hub.load("snakers4/silero-vad", "silero_vad", trust_repo=True)

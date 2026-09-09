@@ -6,6 +6,7 @@ and whether it burns quota.
 | Script | Accelerator | Quota | Stage |
 |---|---|---|---|
 | `00_quota_probe.py` | GPU T4×2 | ~15–30 min | Gate 0 — how does the meter bill? |
+| `01a_corpus_distribution_cpu.py` | **None (CPU)** | free | Measure clip length + code-mixing **before** designing the window |
 | `01_acquire_segment_cpu.py` | **None (CPU)** | free | Stream Vaani, VAD-segment to ≤10 s, pack |
 | `02_audit_and_label_gpu.py` | GPU T4×2 | ~1 h for 5 h audio | Gate 1 audit, then fused label + mel pass |
 | `03_smoke_train_gpu.py` | GPU T4×2 | ~1 h | Cut student, train on 5 h, prove resume works |

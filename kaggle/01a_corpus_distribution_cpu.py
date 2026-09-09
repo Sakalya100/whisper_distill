@@ -1,0 +1,199 @@
+"""Step 1a -- measure the corpus before committing to a window size.
+
+    Accelerator: NONE (CPU)     Internet: ON     Quota: FREE     Runtime: ~3-5 min
+
+WHY THIS EXISTS
+  The schema probe's first row decoded to 2.0 seconds, carrying one complete short
+  utterance ("बहुत ही सुन्दर टमाटर है ।"). If that is typical rather than an outlier, two
+  design assumptions in the plan are wrong:
+
+    1. The 10 s student window would be ~80% padding. That wastes encoder compute on every
+       step and, worse, the model never sees a long utterance during training -- while real
+       dictation ("remind me to call mom at 4 tomorrow, and add milk to the list") is
+       3-10 s. Optimising the window for 2 s clips would build a model that fails on the
+       actual task.
+    2. VAD segmentation would be close to pointless -- there is nothing to segment. That is
+       a whole CPU stage doing nothing, and merge_to_window's max_gap_s tuning would be
+       noise.
+
+  Also: that transcript is pure Devanagari with no Latin script at all. If Vaani Hindi is
+  not meaningfully code-mixed, it is fine as acoustic coverage but it is NOT the source of
+  the Hinglish behaviour this project is about -- and the data plan's 120/50/30 hour split
+  needs rebalancing toward IndicVoices and scraped audio.
+
+  One sample decides nothing. This measures the distribution.
+"""
+
+import json
+import sys
+import time
+from collections import Counter
+from pathlib import Path
+
+N_ROWS = 400           # ~3-5 min. Enough for stable deciles, cheap enough to redo.
+DATASET = "ARTPARK-IISc/Vaani-transcription-part"
+CONFIG = "Hindi"
+SPLIT = "train"
+OUT = Path("/kaggle/working/corpus_profile.json")
+REPO_SRC = "/kaggle/working/whisper_distill/src"
+
+sys.path.insert(0, REPO_SRC)
+
+
+def pct(values: list[float], q: float) -> float:
+    if not values:
+        return 0.0
+    s = sorted(values)
+    i = min(len(s) - 1, max(0, int(round(q * (len(s) - 1)))))
+    return s[i]
+
+
+def main() -> None:
+    import re
+
+    from datasets import load_dataset
+    from kaggle_secrets import UserSecretsClient
+
+    from whisper_distill.config import DEFAULT
+    from whisper_distill.data.audio_io import decode_audio_field
+    from whisper_distill.evaluation.metrics import code_mix_bucket, code_mix_density
+
+    audio_cfg = DEFAULT.audio
+    token = UserSecretsClient().get_secret("HF_TOKEN")
+    ds = load_dataset(DATASET, CONFIG, split=SPLIT, streaming=True, token=token)
+
+    latin = re.compile(r"[A-Za-z]")
+    devanagari = re.compile(r"[ऀ-ॿ]")
+
+    durations: list[float] = []
+    words: list[int] = []
+    densities: list[float] = []
+    buckets: Counter[str] = Counter()
+    n_latin = n_empty = n_danda = n_comma = 0
+    decode_paths: Counter[str] = Counter()
+    start = time.time()
+
+    print(f"profiling {N_ROWS} rows of {DATASET}:{CONFIG}:{SPLIT}\n", flush=True)
+    for i, row in enumerate(ds):
+        if i >= N_ROWS:
+            break
+        try:
+            wav, how = decode_audio_field(row["audio"], target_sr=audio_cfg.sample_rate)
+        except Exception as e:  # noqa: BLE001
+            print(f"  row {i}: decode failed ({type(e).__name__}); skipping")
+            continue
+        decode_paths[how] += 1
+        durations.append(len(wav) / audio_cfg.sample_rate)
+
+        t = (row.get("transcript") or "").strip()
+        if not t:
+            n_empty += 1
+            continue
+        words.append(len(t.split()))
+        densities.append(code_mix_density(t))
+        buckets[code_mix_bucket(t)] += 1
+        n_latin += bool(latin.search(t))
+        n_danda += "।" in t
+        n_comma += ("," in t or "," in t)
+
+        if i and i % 50 == 0:
+            print(f"  {i:>4}/{N_ROWS}  {(time.time() - start) / 60:.1f} min", flush=True)
+
+    n = len(durations)
+    if not n:
+        raise SystemExit("no rows decoded -- check the token and gating")
+
+    total_h = sum(durations) / 3600
+    print("\n" + "=" * 68)
+    print(f"AUDIO  ({n} rows, {total_h:.3f} h, {(time.time() - start) / 60:.1f} min)")
+    print("=" * 68)
+    for label, q in (("p10", .10), ("p25", .25), ("median", .50),
+                     ("p75", .75), ("p90", .90), ("max", 1.0)):
+        print(f"  {label:<7} {pct(durations, q):6.2f} s")
+    print(f"  {'mean':<7} {sum(durations) / n:6.2f} s")
+    over_10 = sum(d > 10 for d in durations)
+    print(f"\n  clips > 10 s : {over_10} / {n}  ({over_10 / n * 100:.1f}%)")
+    print(f"  decode paths : {dict(decode_paths)}")
+
+    print("\n" + "=" * 68)
+    print("TRANSCRIPTS")
+    print("=" * 68)
+    print(f"  empty              : {n_empty} / {N_ROWS}")
+    print(f"  median words       : {pct([float(w) for w in words], .50):.0f}")
+    print(f"  contains Latin     : {n_latin} / {len(words)}  "
+          f"({n_latin / max(len(words), 1) * 100:.1f}%)")
+    print(f"  contains danda ।   : {n_danda} / {len(words)}")
+    print(f"  contains comma     : {n_comma} / {len(words)}")
+    print(f"  mean code-mix dens : {sum(densities) / max(len(densities), 1):.3f}")
+    print(f"  buckets            : {dict(buckets)}")
+
+    # ------------------------------------------------------------------ what it means
+    median = pct(durations, .50)
+    print("\n" + "=" * 68)
+    print("READ-OUT")
+    print("=" * 68)
+
+    if median < 3.0:
+        waste = (1 - median / 10.0) * 100
+        print(
+            f"  Median clip is {median:.1f} s, so a 10 s window is ~{waste:.0f}% padding.\n"
+            "  ACTION: do not tune the window for this corpus. Vaani's transcribed part is\n"
+            "  pre-segmented into short utterances, so it is acoustic and speaker coverage,\n"
+            "  not utterance-length coverage. Get 3-10 s utterances from IndicVoices\n"
+            "  (extempore) and the scraped audio, and decide the window from THEIR\n"
+            "  distribution. Consider rebalancing the 120/50/30 h split.\n"
+            "  Also: VAD has almost nothing to segment here -- keep it only to trim\n"
+            "  leading/trailing silence, and skip merge_to_window for this source."
+        )
+    elif median > 8.0:
+        print(
+            f"  Median clip is {median:.1f} s, close to the 10 s ceiling. Segmentation is\n"
+            "  doing real work and the window is well matched. Proceed as planned."
+        )
+    else:
+        print(
+            f"  Median clip is {median:.1f} s -- a good match for a 10 s window with room\n"
+            "  for longer utterances. Proceed as planned."
+        )
+
+    latin_pct = n_latin / max(len(words), 1) * 100
+    if latin_pct < 5.0:
+        print(
+            f"\n  Only {latin_pct:.1f}% of transcripts contain any Latin script. Vaani Hindi\n"
+            "  is essentially monolingual Devanagari.\n"
+            "  ACTION: it cannot teach code-switching. Keep it for acoustic robustness and\n"
+            "  speaker/accent diversity, but the Hinglish behaviour has to come from\n"
+            "  IndicVoices and the scraped corpus. Revisit the data plan's hour split, and\n"
+            "  note that Gate 1's code-switch audit needs genuinely code-mixed audio --\n"
+            "  which means it CANNOT be run on Vaani clips alone."
+        )
+    else:
+        print(f"\n  {latin_pct:.1f}% of transcripts contain Latin script -- usable code-mixing.")
+
+    OUT.write_text(json.dumps({
+        "dataset": f"{DATASET}:{CONFIG}:{SPLIT}",
+        "n_rows": n,
+        "hours_sampled": total_h,
+        "duration_s": {
+            "p10": pct(durations, .10), "p25": pct(durations, .25),
+            "median": median, "p75": pct(durations, .75),
+            "p90": pct(durations, .90), "max": pct(durations, 1.0),
+            "mean": sum(durations) / n,
+        },
+        "clips_over_10s_pct": over_10 / n * 100,
+        "transcripts": {
+            "empty": n_empty,
+            "median_words": pct([float(w) for w in words], .50),
+            "latin_pct": latin_pct,
+            "danda": n_danda,
+            "comma": n_comma,
+            "mean_code_mix_density": sum(densities) / max(len(densities), 1),
+            "buckets": dict(buckets),
+        },
+        "decode_paths": dict(decode_paths),
+    }, indent=2), encoding="utf-8")
+    print(f"\nwrote {OUT}")
+
+
+if __name__ == "__main__":
+    main()

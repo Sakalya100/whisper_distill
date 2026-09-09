@@ -18,6 +18,7 @@ kaggle.json
 # src/whisper_distill/data/, which silently kept the entire data package out of the repo
 # until a Kaggle run failed on ModuleNotFoundError.
 /data/
+/local_out/
 /cache/
 /mels/
 /checkpoints/

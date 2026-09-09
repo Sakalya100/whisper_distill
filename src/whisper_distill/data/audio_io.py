@@ -116,6 +116,77 @@ def decode_audio_field(field: Any, *, target_sr: int = SAMPLE_RATE) -> tuple[np.
     )
 
 
+#: Column names corpora use for the reference text, in the order we prefer them.
+#: Vaani uses `transcript`; IndicVoices publishes no schema on its card, so the key has to
+#: be discovered rather than assumed. Ordered so a genuine transcript beats a normalised
+#: or verbatim variant when a corpus ships several.
+TRANSCRIPT_KEY_CANDIDATES = (
+    "transcript",
+    "text",
+    "sentence",
+    "transcription",
+    "normalized_text",
+    "verbatim",
+    "raw_text",
+)
+
+
+def find_transcript_key(
+    row: dict, candidates: tuple[str, ...] = TRANSCRIPT_KEY_CANDIDATES
+) -> str | None:
+    """Discover which column holds the reference text.
+
+    Prefers a candidate that is actually populated over one that merely exists -- a corpus
+    can carry an empty `text` alongside a filled `transcript`, and picking the empty one
+    silently disables the WER filter downstream.
+    """
+    present = [c for c in candidates if c in row]
+    for c in present:
+        value = row.get(c)
+        if isinstance(value, str) and value.strip():
+            return c
+    return present[0] if present else None
+
+
+def find_audio_key(row: dict) -> str | None:
+    """Discover which column holds the audio, by shape rather than by name."""
+    for name in ("audio", "audio_filepath", "wav", "speech"):
+        if name in row:
+            return name
+    for name, value in row.items():
+        if hasattr(value, "get_all_samples"):
+            return name
+        if isinstance(value, dict) and ({"array", "bytes", "path"} & set(value)):
+            return name
+    return None
+
+
+def describe_row(row: dict) -> str:
+    """Human-readable summary of an unknown corpus row. Use before assuming anything."""
+    audio_key = find_audio_key(row)
+    text_key = find_transcript_key(row)
+    lines = [
+        f"columns       : {sorted(row)}",
+        f"audio column  : {audio_key!r}",
+        f"text column   : {text_key!r}",
+    ]
+    if audio_key:
+        field = row[audio_key]
+        shape = type(field).__name__
+        if isinstance(field, dict):
+            shape += f" keys={sorted(field)}"
+        lines.append(f"audio field   : {shape}")
+    if text_key:
+        lines.append(f"text sample   : {str(row.get(text_key))[:100]!r}")
+    other = {
+        k: (str(v)[:40] if not isinstance(v, (dict, list)) else type(v).__name__)
+        for k, v in row.items()
+        if k not in {audio_key, text_key}
+    }
+    lines.append(f"other columns : {other}")
+    return "\n".join(lines)
+
+
 def probe_schema(row: dict, *, require: tuple[str, ...] = ("audio", "transcript")) -> str:
     """Assert the columns we depend on exist, and describe the audio field's shape.
 

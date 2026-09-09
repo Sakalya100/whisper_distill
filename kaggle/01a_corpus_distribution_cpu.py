@@ -37,7 +37,7 @@ N_ROWS = 400           # ~3-5 min. Enough for stable deciles, cheap enough to re
 DATASET = "ARTPARK-IISc/Vaani-transcription-part"
 CONFIG = "Hindi"
 SPLIT = "train"
-TRANSCRIPT_KEY = "transcript"   # IndicVoices may name this differently -- the probe says so
+TRANSCRIPT_KEY = None   # None = discover it. IndicVoices publishes no schema on its card.
 
 OUT = Path(f"/kaggle/working/corpus_profile_{DATASET.split('/')[-1]}_{CONFIG}.json")
 REPO_SRC = "/kaggle/working/whisper_distill/src"
@@ -60,7 +60,12 @@ def main() -> None:
     from kaggle_secrets import UserSecretsClient
 
     from whisper_distill.config import DEFAULT
-    from whisper_distill.data.audio_io import decode_audio_field
+    from whisper_distill.data.audio_io import (
+        decode_audio_field,
+        describe_row,
+        find_audio_key,
+        find_transcript_key,
+    )
     from whisper_distill.data.streaming import take
     from whisper_distill.evaluation.metrics import code_mix_bucket, code_mix_density
 
@@ -79,6 +84,20 @@ def main() -> None:
     decode_paths: Counter[str] = Counter()
     start = time.time()
 
+    # Discover the schema before profiling. IndicVoices ships no column list, so
+    # hardcoding a key here would fail 400 rows in with nothing to show for it.
+    first = next(iter(take(ds, 1)))
+    print(describe_row(first) + "\n")
+    audio_key = find_audio_key(first) or "audio"
+    text_key = TRANSCRIPT_KEY or find_transcript_key(first)
+    if text_key is None:
+        raise SystemExit(
+            f"no reference-text column found in {sorted(first)}. Set TRANSCRIPT_KEY "
+            "explicitly at the top of this script."
+        )
+    print(f"using audio={audio_key!r} text={text_key!r}\n")
+    del first
+
     print(f"profiling {N_ROWS} rows of {DATASET}:{CONFIG}:{SPLIT}\n", flush=True)
     # take() rather than `for row in ds` + break: abandoning the stream mid-download
     # leaves hub retry threads and FFmpeg workers running into interpreter shutdown, which
@@ -86,14 +105,14 @@ def main() -> None:
     # on Kaggle a fatal error can mark the commit failed and block dataset creation.
     for i, row in enumerate(take(ds, N_ROWS)):
         try:
-            wav, how = decode_audio_field(row["audio"], target_sr=audio_cfg.sample_rate)
+            wav, how = decode_audio_field(row[audio_key], target_sr=audio_cfg.sample_rate)
         except Exception as e:  # noqa: BLE001
             print(f"  row {i}: decode failed ({type(e).__name__}); skipping")
             continue
         decode_paths[how] += 1
         durations.append(len(wav) / audio_cfg.sample_rate)
 
-        t = (row.get(TRANSCRIPT_KEY) or "").strip()
+        t = (row.get(text_key) or "").strip()
         if not t:
             n_empty += 1
             continue

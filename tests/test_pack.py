@@ -221,3 +221,46 @@ def test_resample_is_a_noop_at_the_target_rate():
 
     x = np.arange(100, dtype=np.float32)
     assert np.array_equal(resample(x, 16000, 16000), x)
+
+
+# --------------------------------------------------- schema discovery for unknown corpora
+def test_transcript_key_prefers_a_populated_column():
+    """A corpus can carry an empty `text` beside a filled `verbatim`. Picking the empty one
+    silently disables the WER filter, which looks like success."""
+    from whisper_distill.data.audio_io import find_transcript_key
+
+    row = {"text": "", "verbatim": "meeting 4 baje hai", "speaker_id": "s1"}
+    assert find_transcript_key(row) == "verbatim"
+
+
+def test_transcript_key_follows_the_preference_order():
+    from whisper_distill.data.audio_io import find_transcript_key
+
+    assert find_transcript_key({"text": "a", "transcript": "b"}) == "transcript"
+    assert find_transcript_key({"sentence": "a"}) == "sentence"
+    assert find_transcript_key({"speaker": "x"}) is None
+
+
+def test_audio_key_is_found_by_shape_when_the_name_is_unknown():
+    """IndicVoices publishes no schema, so name-based lookup cannot be the only path."""
+    from whisper_distill.data.audio_io import find_audio_key
+
+    class _Decoder:
+        def get_all_samples(self):  # pragma: no cover - shape marker only
+            raise NotImplementedError
+
+    assert find_audio_key({"oddly_named": _Decoder()}) == "oddly_named"
+    assert find_audio_key({"wav": {"bytes": b"x"}}) == "wav"
+    assert find_audio_key({"audio": {"array": np.zeros(1), "sampling_rate": 16000}}) == "audio"
+    assert find_audio_key({"speaker_id": "s1"}) is None
+
+
+def test_describe_row_reports_both_keys_and_the_leftovers():
+    from whisper_distill.data.audio_io import describe_row
+
+    out = describe_row({
+        "audio": {"array": np.zeros(1), "sampling_rate": 16000},
+        "transcript": "hi",
+        "gender": "female",
+    })
+    assert "'audio'" in out and "'transcript'" in out and "gender" in out

@@ -50,8 +50,23 @@ fails on real input is not a saving. So the resolution is not to shrink toward V
 ## What closes this
 
 Profile `ai4bharat/IndicVoices` (spontaneous/extempore, so expected to be longer) with
-`kaggle/01a_corpus_distribution_cpu.py`, then compute the padding cost of each option
-against the **source mix weighted** distribution. Free, CPU, ~5 minutes.
+`kaggle/01a_corpus_distribution_cpu.py` — set `SOURCE = "indicvoices"` at the top, which
+is already the default. Free, CPU, ~5 minutes.
+
+The second half is now written: `whisper_distill.data.window` costs each option against
+the **source mix weighted** distribution.
+
+```
+python -m whisper_distill.data.window corpus_profile_*.json
+```
+
+It weights sources by **contributed training steps, not hours** — a step costs one full
+window however short the clip, so a source contributes in proportion to
+`hours / mean_duration`. Vaani at 2.60 s median therefore pulls the mix harder than its
+120 h share suggests. Padding and truncation are reported separately and never netted
+against each other, because shrinking the window always improves one and worsens the
+other; per the tension above, read `speech lost` as the constraint and minimise padding
+under it.
 
 Until then the cache is not written, because rewriting 11.5 GB of shards is a GPU-hour
 expense and this is a free CPU-hour question.

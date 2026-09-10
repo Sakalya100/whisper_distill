@@ -22,6 +22,20 @@ WHY THIS EXISTS
   needs rebalancing toward IndicVoices and scraped audio.
 
   One sample decides nothing. This measures the distribution.
+
+WHERE THIS STANDS
+  Vaani Hindi is measured (400 rows: median 2.60 s, 2.0% over 10 s, 68.2% Latin-script --
+  see docs/research/2026-09-09-corpus-schema-probe.md). Assumption 1 held, assumption 2
+  held, and the code-mixing worry did not. What is still open is the window length, and
+  that CANNOT be decided from Vaani: it is pre-segmented short utterances, so it carries
+  acoustic and speaker coverage but not utterance-length coverage.
+
+  So the remaining job is the IndicVoices leg. Flip SOURCE below, commit, then feed both
+  JSONs to the cost model, which weights by contributed training steps rather than hours:
+
+      python -m whisper_distill.data.window corpus_profile_*.json
+
+  That closes docs/decisions/0004-input-window-length.md.
 """
 
 import json
@@ -32,11 +46,16 @@ from pathlib import Path
 
 N_ROWS = 400           # ~3-5 min. Enough for stable deciles, cheap enough to redo.
 
-# Swap these to profile another source. The window length must be decided from the
-# COMBINED distribution weighted by the final source mix, not from Vaani alone.
-DATASET = "ARTPARK-IISc/Vaani-transcription-part"
-CONFIG = "Hindi"
-SPLIT = "train"
+# One line switches corpus. These mirror DataConfig.sources in config.py -- keep them in
+# step. The window must come from the COMBINED distribution weighted by the final source
+# mix, so run this once per source and keep both JSONs.
+SOURCES = {
+    "vaani": ("ARTPARK-IISc/Vaani-transcription-part", "Hindi", "train"),
+    "indicvoices": ("ai4bharat/IndicVoices", "hindi", "train"),
+}
+SOURCE = "indicvoices"          # <-- vaani is already measured; this is the open leg
+
+DATASET, CONFIG, SPLIT = SOURCES[SOURCE]
 TRANSCRIPT_KEY = None   # None = discover it. IndicVoices publishes no schema on its card.
 
 OUT = Path(f"/kaggle/working/corpus_profile_{DATASET.split('/')[-1]}_{CONFIG}.json")
@@ -164,11 +183,10 @@ def main() -> None:
         waste = (1 - median / 10.0) * 100
         print(
             f"  Median clip is {median:.1f} s, so a 10 s window is ~{waste:.0f}% padding.\n"
-            "  ACTION: do not tune the window for this corpus. Vaani's transcribed part is\n"
-            "  pre-segmented into short utterances, so it is acoustic and speaker coverage,\n"
-            "  not utterance-length coverage. Get 3-10 s utterances from IndicVoices\n"
-            "  (extempore) and the scraped audio, and decide the window from THEIR\n"
-            "  distribution. Consider rebalancing the 120/50/30 h split.\n"
+            "  ACTION: do not tune the window for this corpus alone -- it is pre-segmented\n"
+            "  short utterances, which is acoustic and speaker coverage, not\n"
+            "  utterance-length coverage. Real dictation runs 3-10 s. Profile the other\n"
+            "  sources and settle the window on the weighted mix.\n"
             "  Also: VAD has almost nothing to segment here -- keep it only to trim\n"
             "  leading/trailing silence, and skip merge_to_window for this source."
         )
@@ -186,13 +204,13 @@ def main() -> None:
     latin_pct = n_latin / max(len(words), 1) * 100
     if latin_pct < 5.0:
         print(
-            f"\n  Only {latin_pct:.1f}% of transcripts contain any Latin script. Vaani Hindi\n"
-            "  is essentially monolingual Devanagari.\n"
+            f"\n  Only {latin_pct:.1f}% of transcripts contain any Latin script -- this\n"
+            "  source is essentially monolingual Devanagari.\n"
             "  ACTION: it cannot teach code-switching. Keep it for acoustic robustness and\n"
             "  speaker/accent diversity, but the Hinglish behaviour has to come from\n"
             "  IndicVoices and the scraped corpus. Revisit the data plan's hour split, and\n"
             "  note that Gate 1's code-switch audit needs genuinely code-mixed audio --\n"
-            "  which means it CANNOT be run on Vaani clips alone."
+            "  which means it CANNOT be run on this source alone."
         )
     else:
         print(f"\n  {latin_pct:.1f}% of transcripts contain Latin script -- usable code-mixing.")
@@ -220,6 +238,9 @@ def main() -> None:
         "decode_paths": dict(decode_paths),
     }, indent=2), encoding="utf-8")
     print(f"\nwrote {OUT}")
+    print("\nDownload this JSON, put it beside the other sources' profiles, and run\n"
+          "  python -m whisper_distill.data.window corpus_profile_*.json\n"
+          "to cost the windows of decision 0004 against the weighted mix.")
 
 
 if __name__ == "__main__":

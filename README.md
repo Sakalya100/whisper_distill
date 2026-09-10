@@ -74,7 +74,7 @@ Everything that does not need a GPU runs in a CPU session, which does not draw o
 
 ```bash
 pip install -e ".[dev]"        # local: tests, linting
-pytest                         # 62 tests, no torch required
+pytest                         # 93 tests, no torch required
 ```
 
 Inside a Kaggle notebook, see [`kaggle/README.md`](kaggle/README.md) — it carries the

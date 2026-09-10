@@ -229,6 +229,19 @@ Real loss is the sub-`min_clip_seconds` tail — **0.54%**, not 7.5%. The trunca
 overstated it by more than an order of magnitude, and it overstated it worst on exactly
 the long-form sources the window decision is about.
 
+**How far to trust the drop column.** These are seconds discarded as a sub-`min_clip_seconds`
+remainder, computed over 2000 pseudo-samples interpolated from six percentiles, so the
+exact figure is a property of a smooth reconstruction rather than of the corpus — real
+durations cluster and the true number could differ severalfold. It is also sharply
+sensitive to the threshold: blended at a 10 s window it reads 0.13% at
+`min_clip_seconds=0.5`, 0.54% at 1.0, 1.95% at 1.5 and 9.00% at 2.0. **The claim to rely
+on is the bound, not the digits: under 2% at every candidate window at the configured
+1.0 s minimum.** That is enough to settle the question, and no more is claimed.
+
+One thing the seconds hide: IndicVoices' p10 is 0.638 s, so roughly a sixth of its *clips*
+fall under `min_clip_seconds` and are dropped whole. Little audio (1.68% of its seconds),
+but a real cut to clip yield worth expecting on the first acquisition run.
+
 With that corrected, data loss no longer discriminates between the candidates: every
 window from 4 s up discards under 2% of speech. What is left is a straight trade between
 training compute and task fit, and decision 0004 already rules on task fit.

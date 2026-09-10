@@ -68,7 +68,10 @@ splits an over-long region into back-to-back windows rather than truncating it:
 | **10 s** | 61.3% | 0.54% | 1.03 | 1.00x |
 
 **Data loss does not discriminate.** Every candidate discards under 2% of speech, because
-long clips are split rather than cut. The tension stated above was framed on the
+long clips are split rather than cut. Treat that bound, not the individual figures, as the
+result — the drop column is computed over a reconstruction from six percentiles and is
+sensitive to `min_clip_seconds` (blended at 10 s: 0.13% at 0.5 s, 0.54% at 1.0 s, 9.00% at
+2.0 s). The bound holds across that whole range at the configured 1.0 s. The tension stated above was framed on the
 assumption that a short window truncates the corpus; for *training* it does not. So the
 question reduces to compute against task fit — and the task-fit argument above is
 unchanged and still decisive. Dictation runs 3–10 s. A 6 s window would truncate real user
@@ -76,9 +79,10 @@ input at inference, where there is no `merge_to_window` to split it, and the 33%
 saving does not buy back a model that cuts users off mid-sentence.
 
 **Option 1 (fixed 10 s) is therefore the working choice.** Option 2 (length bucketing)
-stays open as an efficiency ablation, and it is more attractive than it looked: at 1.03
-windows per clip the corpus is overwhelmingly single-window, so bucketing is mostly a
-question of how to batch the short tail. Option 3 (fixed 6 s) is rejected — it optimises
+stays open as an efficiency ablation, and it is more attractive than it looked: the corpus
+is overwhelmingly single-window per source, not just blended — 1.02 windows per clip for
+Vaani and 1.06 for IndicVoices — so bucketing is mostly a question of how to batch the
+short tail. Option 3 (fixed 6 s) is rejected — it optimises
 the corpus at the task's expense.
 
 ## What still closes this

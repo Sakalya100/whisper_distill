@@ -197,9 +197,13 @@ class KaggleConfig:
     #: filtering, tokenisation, shard packing, ITN and eval scoring all cost zero quota.
     cpu_sessions_are_free: bool = True
 
-    # --- still unverified; settled by kaggle/00_quota_probe.py
-    #: Does a T4x2 session bill wall-clock or GPU-hours? ~2x schedule impact.
-    t4x2_bills_wall_clock: bool | None = None
+    #: Confirmed 2026-09-10: **per-GPU**. A T4x2 session bills two quota-hours for every
+    #: wall-clock hour, so the second GPU buys VRAM headroom and nothing else. The plan's
+    #: 108 GPU-hour mid-estimate therefore costs 108 quota-hours -- 3.6 weeks at 30 h/week,
+    #: not the 1.8 that wall-clock billing would have given. Consequence: prefer P100 for
+    #: single-GPU stages, keep T4x2 for the runs that genuinely need 32 GB, and cut the
+    #: three-run ablation block to one.
+    t4x2_bills_wall_clock: bool = False
 
 
 @dataclass(frozen=True)

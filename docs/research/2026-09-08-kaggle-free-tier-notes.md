@@ -29,8 +29,13 @@ Append-only. Later passes get their own file.
 
 ### Open questions — resolved by `kaggle/00_quota_probe.py`
 
-- `[UNVERIFIED]` **Does a T4×2 session bill wall-clock or GPU-hours?** Not documented
-  anywhere I could find, including the floating-quota announcement. ~2× schedule impact.
+- **RESOLVED 2026-09-10: per-GPU.** A T4×2 session bills two quota-hours per wall-clock
+  hour. Not documented anywhere I could find, including the floating-quota announcement,
+  so it took the probe plus a direct reading of the account meter. The plan's 108 GPU-hour
+  mid-estimate costs 108 quota-hours — ~3.6 weeks at 30 h/week, the expensive branch.
+  The first probe's `+54` already decoded to `per_gpu` against its nominal two 15-minute
+  sessions; it was filed inconclusive only because the real durations were never read from
+  version history. `KaggleConfig.t4x2_bills_wall_clock` is now `False`.
 - **RESOLVED: CPU-only sessions do not consume the GPU pool.** Measured -- a CPU session
   ran and the GPU meter did not move. The entire "push prep to CPU" strategy is sound, and
   every zero in the budget table is a real zero.

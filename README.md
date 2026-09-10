@@ -17,11 +17,12 @@ The plan is ordered by what has to be measured before the rest of it means anyth
 
 | Gate | Question | Status |
 |---|---|---|
-| 0 | Does a T4×2 session bill wall-clock or GPU-hours? | **measuring** — probe running |
+| 0 | Does a T4×2 session bill wall-clock or GPU-hours? | **closed** — per-GPU. 108 quota-h, ~3.6 weeks |
 | 1 | Does the teacher preserve Latin-script English on code-mixed speech? | not started |
 
-Gate 0 moves the schedule ~2×. Gate 1 can invalidate the teacher, and with it the
-80-mel single-pass feature decision. Neither is expensive; both are blocking.
+Gate 0 came in at the expensive end: the second GPU is metered, so the plan costs 108
+quota-hours and ~3.6 weeks rather than 54 and ~1.8. Gate 1 can invalidate the teacher, and
+with it the 80-mel single-pass feature decision.
 
 Confirmed so far: phone verified · 30 h GPU + 20 h TPU pools · 200 GiB private dataset
 quota · **≥2 concurrent T4×2 sessions allowed**.

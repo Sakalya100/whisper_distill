@@ -13,9 +13,11 @@ Two gates up front, then a schedule that survives a session disconnect.
 
 ---
 
-## Gate 0 — how does Kaggle bill a T4×2 session?
+## Gate 0 — how does Kaggle bill a T4×2 session? **Resolved: per-GPU**
 
-`[UNVERIFIED]` — settled by `kaggle/00_quota_probe.py`, ~30 minutes of quota.
+**CLOSED 2026-09-10 — the meter charges per GPU.** A T4×2 session costs two quota-hours
+for every wall-clock hour. Jump to [the resolution](#resolved-2026-09-10--per-gpu) for
+what it changes; the sections between are the record of how it was settled.
 
 The 30 hours is one pool shared across P100 and T4×2. Nothing in Kaggle's docs or product
 announcements states whether the meter charges **session wall-clock** or **GPU-hours**.
@@ -71,6 +73,34 @@ concurrent commits rarely run for the same length.
 per-GPU predicts `+40` — a factor of two, no concurrency confound, and startup overhead
 cannot bridge the gap. Costs 20–40 min of a 30-hour week. A P100 probe cannot substitute:
 with one GPU both hypotheses predict the same delta.
+
+### Resolved 2026-09-10 — per-GPU
+
+**Confirmed on the account: a T4×2 session bills two quota-hours per wall-clock hour.**
+`KaggleConfig.t4x2_bills_wall_clock` is now `False` rather than `None`.
+
+Worth noting that the first probe was not as uninformative as it was recorded to be. Run
+through the decoder against its nominal two 15-minute sessions, `+54` already returns
+`per_gpu` — wall-clock predicted `+30` and per-GPU `+60`, and 54 sits outside the
+inconclusive band around the 45-minute midpoint. It was filed as inconclusive because the
+sessions' *actual* durations were never read from version history, and without those the
+reading has two solutions. The verdict now confirms the reading the decoder already gave.
+
+The clean re-run described above is therefore not needed. Its 20–40 minutes stay in the
+pool.
+
+**What this changes:**
+
+- **Budget doubles against the optimistic branch.** 108 GPU-hours of work costs 108
+  quota-hours, ~3.6 weeks at 30 h/week, not 54 and ~1.8.
+- **T4×2 buys VRAM, not throughput.** Two concurrent single-GPU sessions cost exactly what
+  one dual-GPU session costs, so there is no billing reason to prefer DDP — only a
+  wall-clock one. Prefer **P100 for single-GPU stages** and keep T4×2 for the runs that
+  genuinely need 32 GB.
+- **The three-run ablation block does not fit.** At 30–45 GPU-hours it is a third of the
+  entire budget. Cut it to one run, or fund it by finishing the main run under estimate.
+- **The CPU-first discipline gets stricter, not looser.** Every GPU-hour now costs double,
+  so a stray CPU-shaped step inside a GPU notebook wastes twice what it used to.
 
 ### Confirmed: CPU sessions are free
 
@@ -169,7 +199,8 @@ Nine rules that between them decide whether ~108 GPU-hours of work fits in the q
    the GPU dropdown is greyed out.
 
 2. **Push every non-GPU stage into CPU notebooks.** Kaggle meters GPU and TPU; CPU
-   notebooks appear not to draw on the 30-hour pool — `[UNVERIFIED]`, confirmed by Gate 0.
+   notebooks do not draw on the 30-hour pool — measured 2026-09-08, and now doubly worth
+   doing since Gate 0 resolved per-GPU and every GPU-hour costs two quota-hours.
    CPU sessions give 2× Xeon, 32 GB RAM, 12 hours. Move download, VAD segmentation,
    resampling, WER filtering, tokenisation, dataset packing, ITN development and all eval
    scoring there. This deletes the "3 GPU hours" prep line outright.
@@ -212,7 +243,8 @@ only. `int8_float16` is tuned for Ampere+; T4 is Turing, so benchmark it against
 
 ## Budget
 
-Compute required, in **GPU-hours**. What that costs in *quota*-hours is what Gate 0 decides.
+Compute required, in **GPU-hours**. Gate 0 resolved per-GPU, so on a T4×2 these convert
+one-for-one into quota-hours — the column below *is* the quota cost.
 
 | Stage | Where | GPU-hours |
 |---|---|---:|
@@ -228,11 +260,12 @@ Compute required, in **GPU-hours**. What that costs in *quota*-hours is what Gat
 | Slack for failed runs and disconnects | — | 25–30 |
 | **Total compute** | | **90–125** |
 
-At the 108-hour mid-estimate: **54 quota-hours (1.8 weeks)** under wall-clock billing,
-**108 quota-hours (3.6 weeks)** under per-GPU billing. The wall-clock figure is a floor,
-not a forecast — only stages that genuinely scale under DDP get the halving. The
-twelve-week wall-clock estimate stands either way; data prep, app work and debugging all
-happen off-GPU.
+At the 108-hour mid-estimate, and with Gate 0 resolved per-GPU: **108 quota-hours, ~3.6
+weeks** at 30 h/week. The 54-hour wall-clock figure this table used to hold open is gone;
+it was never a forecast, and it is now not an option either. The twelve-week calendar
+estimate still stands — data prep, app work and debugging all happen off-GPU — but the
+GPU-side slack is half what the optimistic branch assumed, which makes the three-run
+ablation block (30–45 h, a third of the budget) the first thing to cut.
 
 ### Still under-costed
 

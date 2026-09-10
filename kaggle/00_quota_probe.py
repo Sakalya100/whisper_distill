@@ -1,5 +1,10 @@
 """Gate 0 -- does a T4x2 session bill wall-clock or GPU-hours?
 
+    STATUS 2026-09-10: ANSWERED -- per-GPU. A T4x2 session bills two quota-hours per
+    wall-clock hour. You do not need to run this. Kept for the method, and in case the
+    platform's billing changes and the question has to be re-asked.
+
+
     Accelerator: GPU T4 x2      Internet: not required      Quota: ~15-30 min
 
 The 30 h/week pool is shared across P100 and T4x2, and nothing in Kaggle's documentation

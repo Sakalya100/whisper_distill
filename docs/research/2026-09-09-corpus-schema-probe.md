@@ -153,3 +153,86 @@ Two smaller things the local run confirmed:
   level, so `torch.hub.load` fails without it even though we only call
   `get_speech_timestamps`. Kaggle's image preinstalls it, which is why
   `01_acquire_segment_cpu.py` has never hit this; a fresh local venv does not.
+
+---
+
+## Addendum 2026-09-10 — IndicVoices measured, and it inverts the code-mixing assumption
+
+Profiled `ai4bharat/IndicVoices:hindi:train`, 400 rows (0.627 h), free Kaggle CPU session.
+Raw profile: [`profiles/corpus_profile_IndicVoices_hindi.json`](profiles/corpus_profile_IndicVoices_hindi.json).
+
+### The headline is not the window — it is the Latin-script share
+
+| | Vaani Hindi | IndicVoices Hindi |
+|---|---:|---:|
+| contains Latin script | **68.2%** | **4.25%** |
+| mean code-mix density | 0.157 | **0.0025** |
+| buckets | hindi_dominant 192 · balanced 181 · dense 27 | hindi_dominant 398 · balanced 2 · **dense 0** |
+| contains danda `।` | 307 / 400 | **0 / 400** |
+| contains comma | 0 / 400 | 0 / 400 |
+
+**IndicVoices Hindi is essentially monolingual Devanagari.** That is the exact reverse of
+the plan's assumption. The correction recorded above concluded that no rebalancing was
+needed *because Vaani turned out to be code-mixed*; it never considered that IndicVoices
+might be the monolingual one. Consequences:
+
+- **The 50 h IndicVoices allocation no longer buys Hinglish.** It is still worth having,
+  but for a different reason than it was budgeted: it is the only source measured so far
+  with real utterance-length coverage. Keep it for acoustic, speaker and length diversity.
+- **Vaani is now the only referenced code-mixed audio in the plan.** Gate 1's audit has to
+  run on Vaani's `dense` + `balanced` buckets; IndicVoices clips cannot serve it at all.
+- **The Hinglish behaviour rests on Vaani plus the 30 h of scraped audio**, and the scraped
+  portion has not been collected or measured. That is now the riskiest unmeasured thing in
+  the data plan, not a nice-to-have.
+- **Zero punctuation of any kind.** Vaani at least carries a sentence-final danda 307/400
+  times; IndicVoices carries none. Across 800 profiled rows from two corpora there is not
+  one comma. Gate 1's question — *does the teacher emit commas?* — is now backed by 800
+  rows rather than 400.
+
+The `120 / 50 / 30` hour split should be revisited on these numbers. Not changing
+`DataConfig.target_hours` yet: that is a plan decision and it needs the scraped-audio
+measurement first.
+
+### Audio duration
+
+| | p10 | p25 | median | p75 | p90 | max | mean | >10 s |
+|---|---|---|---|---|---|---|---|---|
+| Vaani | 1.71 | 2.13 | 2.60 | 3.79 | 6.35 | 14.61 | 3.40 | 2.0% |
+| IndicVoices | 0.64 | 1.50 | **3.52** | 7.82 | **14.11** | **28.92** | 5.64 | **19.75%** |
+
+IndicVoices is the longer corpus, as decision 0004 expected of spontaneous speech, but its
+median is still only 3.52 s. The difference is the tail: p90 of 14.1 s against Vaani's
+6.35 s, and a fifth of clips over 10 s against Vaani's 2%.
+
+All 400 decoded via `audio_decoder`, consistent with the earlier Kaggle run.
+
+### Window cost on the combined mix
+
+`python -m whisper_distill.data.window docs/research/profiles/corpus_profile_*.json`.
+Weighted by contributed training steps: Vaani is 80.6% of steps against IndicVoices' 19.4%,
+despite the 120/50 hour split being 70/30 — short clips buy more steps per hour.
+
+As segmented, which is what `01_acquire_segment_cpu.py` actually builds:
+
+| window | padding | speech dropped | windows/clip | corpus-pass compute |
+|---|---|---|---|---|
+| 4 s | 26.3% | 1.60% | 1.33 | 0.52x |
+| 6 s | 42.4% | 0.96% | 1.14 | 0.67x |
+| 8 s | 53.6% | 0.73% | 1.07 | 0.83x |
+| **10 s** | 61.3% | 0.54% | 1.03 | 1.00x |
+
+**A correction to how the first version of this cost model read.** It scored windows by
+truncating at the ceiling, which reported 7.5% of speech lost at 10 s and 22.4% for
+IndicVoices alone. That is not what the pipeline does: `merge_to_window` splits an
+over-long region into back-to-back windows, so a 28 s clip becomes three training clips.
+Real loss is the sub-`min_clip_seconds` tail — **0.54%**, not 7.5%. The truncating model
+overstated it by more than an order of magnitude, and it overstated it worst on exactly
+the long-form sources the window decision is about.
+
+With that corrected, data loss no longer discriminates between the candidates: every
+window from 4 s up discards under 2% of speech. What is left is a straight trade between
+training compute and task fit, and decision 0004 already rules on task fit.
+
+Note also that shrinking the window saves less than it appears: 10 s → 6 s is 0.67x the
+corpus-pass compute, not 0.60x, because the same audio emits 1.14 windows per clip instead
+of 1.03.

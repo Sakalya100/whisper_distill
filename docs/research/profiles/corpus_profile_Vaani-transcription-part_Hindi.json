@@ -1,0 +1,26 @@
+{
+  "dataset": "ARTPARK-IISc/Vaani-transcription-part:Hindi:train",
+  "n_rows": 400,
+  "hours_sampled": 0.377,
+  "duration_s": {
+    "p10": 1.71,
+    "p25": 2.13,
+    "median": 2.6,
+    "p75": 3.79,
+    "p90": 6.35,
+    "max": 14.61,
+    "mean": 3.4
+  },
+  "clips_over_10s_pct": 2.0,
+  "transcripts": {
+    "empty": 0,
+    "median_words": 8.0,
+    "latin_pct": 68.25,
+    "danda": 307,
+    "comma": 0,
+    "mean_code_mix_density": 0.157,
+    "buckets": {"hindi_dominant": 192, "balanced": 181, "dense": 27}
+  },
+  "decode_paths": {"audio_decoder": 400},
+  "_provenance": "Transcribed from docs/research/2026-09-09-corpus-schema-probe.md. The original Kaggle run's JSON was not kept; every figure here appears in that note's tables."
+}

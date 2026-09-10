@@ -20,6 +20,16 @@ let one hide the other. Decision 0004 already rules that "the window must serve 
 not the corpus", so ``speech_lost_fraction`` is the constraint and padding is the thing
 being minimised subject to it.
 
+**Two cost models, because the pipeline is not the inference path.** ``window_cost``
+truncates at the ceiling. That is the right model for a single forward pass on one
+utterance, and it is what "does a 10 s window fit dictation?" asks. It is *not* what
+``01_acquire_segment_cpu.py`` does: ``merge_to_window`` splits an over-long region into
+back-to-back full windows, so a 28 s clip becomes three training clips rather than one
+truncated one, and the only speech actually discarded is a trailing remainder below
+``min_clip_seconds``. ``segmented_cost`` models that. Read the segmented numbers for
+training cost and the truncating numbers for the task-fit question -- reporting only the
+truncating ones would overstate the loss on exactly the long-form sources that matter.
+
 Pure Python, unit-tested, no torch. Run it on the JSON that
 ``kaggle/01a_corpus_distribution_cpu.py`` writes:
 
@@ -189,10 +199,93 @@ def mixed_cost(
     return window_cost(durations, window_s, weights, baseline_s=baseline_s)
 
 
+@dataclass(frozen=True)
+class SegmentedCost:
+    """What one candidate window costs *after* merge_to_window has split the long clips.
+
+    ``relative_encoder_compute`` is total cost to pass over the whole corpus once --
+    windows emitted times window length -- not the per-step cost, because a shorter window
+    emits more steps from the same audio and the two effects partly cancel.
+    """
+
+    window_s: float
+    padding_fraction: float
+    speech_dropped_fraction: float
+    windows_per_clip: float
+    relative_encoder_compute: float
+
+
+def segmented_cost(
+    durations: Sequence[float],
+    window_s: float,
+    weights: Sequence[float] | None = None,
+    min_seconds: float = 1.0,
+    baseline_s: float = BASELINE_WINDOW_S,
+) -> SegmentedCost:
+    """Cost one window under split-not-truncate segmentation."""
+    if window_s <= 0:
+        raise ValueError("window_s must be positive")
+    if not durations:
+        raise ValueError("no durations given")
+    w = list(weights) if weights is not None else [1.0] * len(durations)
+    if len(w) != len(durations):
+        raise ValueError("weights and durations differ in length")
+
+    def emit(d: float, window: float) -> tuple[float, float, float]:
+        """(windows emitted, speech kept, speech dropped) for one clip."""
+        full, rem = divmod(d, window)
+        # A trailing remainder shorter than min_seconds is dropped, not padded into a
+        # window of its own -- merge_to_window treats those as breath or a clipped word.
+        if rem >= min_seconds:
+            return full + 1, full * window + rem, 0.0
+        return full, full * window, rem
+
+    total_w = sum(w)
+    windows = kept = dropped = speech = 0.0
+    base_windows = 0.0
+    for d, wi in zip(durations, w):
+        n, k, dr = emit(d, window_s)
+        windows += wi * n
+        kept += wi * k
+        dropped += wi * dr
+        speech += wi * d
+        base_windows += wi * emit(d, baseline_s)[0]
+
+    occupied = windows * window_s
+    return SegmentedCost(
+        window_s=window_s,
+        padding_fraction=1.0 - kept / occupied if occupied else 1.0,
+        speech_dropped_fraction=dropped / speech if speech else 0.0,
+        windows_per_clip=windows / total_w,
+        relative_encoder_compute=(
+            occupied / (base_windows * baseline_s) if base_windows else 0.0
+        ),
+    )
+
+
+def mixed_segmented_cost(
+    sources: Sequence[SourceProfile],
+    window_s: float,
+    min_seconds: float = 1.0,
+    baseline_s: float = BASELINE_WINDOW_S,
+) -> SegmentedCost:
+    """segmented_cost against the source mix, weighted by contributed training steps."""
+    if not sources:
+        raise ValueError("no sources given")
+    durations: list[float] = []
+    weights: list[float] = []
+    for s in sources:
+        per_clip = s.clip_weight / len(s.durations)
+        durations.extend(s.durations)
+        weights.extend([per_clip] * len(s.durations))
+    return segmented_cost(durations, window_s, weights, min_seconds, baseline_s)
+
+
 def render_comparison(
     sources: Sequence[SourceProfile],
     candidates: Sequence[float] = (4.0, 6.0, 8.0, 10.0),
     baseline_s: float = BASELINE_WINDOW_S,
+    min_seconds: float = 1.0,
 ) -> str:
     """A table for pasting into decision 0004, plus the step-share breakdown behind it."""
     lines = ["sources (weighted by contributed training steps, not hours)"]
@@ -226,8 +319,30 @@ def render_comparison(
         "speech lost share of total speech seconds discarded by truncation",
         "compute     encoder cost relative to the 10 s baseline (linear; see module docs)",
         "",
+        "AS SEGMENTED -- what 01_acquire_segment_cpu.py actually builds. merge_to_window",
+        "splits an over-long region into back-to-back windows, so nothing is truncated and",
+        "only a sub-min_clip_seconds tail is dropped. Compute is the whole-corpus pass, not",
+        "the per-step cost: a shorter window emits more steps from the same audio.",
+        "",
+        (f"{'window':>7}  {'padding':>8}  {'dropped':>9}  {'windows/clip':>13}"
+         f"  {'compute':>8}"),
+        "  " + "-" * 54,
+    ]
+    for w in candidates:
+        sc = mixed_segmented_cost(sources, w, min_seconds=min_seconds, baseline_s=baseline_s)
+        mark = "  <- baseline" if abs(w - baseline_s) < 1e-9 else ""
+        lines.append(
+            f"{sc.window_s:>6.1f}s  {sc.padding_fraction * 100:>7.1f}%"
+            f"  {sc.speech_dropped_fraction * 100:>8.2f}%"
+            f"  {sc.windows_per_clip:>12.2f}"
+            f"  {sc.relative_encoder_compute:>7.2f}x{mark}"
+        )
+    lines += [
+        "",
         "Decision 0004: the window must serve the task, not the corpus. Dictation runs",
-        "3-10 s, so read 'speech lost' as the constraint and minimise padding under it.",
+        "3-10 s, so the truncating table answers task fit and the segmented table prices",
+        "training. A window that wins on compute while truncating real dictation is not a",
+        "saving -- read 'speech lost' as the constraint, not as a cost to trade away.",
     ]
     return "\n".join(lines)
 

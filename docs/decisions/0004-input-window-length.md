@@ -1,7 +1,7 @@
-# 0004 — Input window length: deferred until IndicVoices is profiled
+# 0004 — Input window length: 10 s provisionally, pending the scraped corpus
 
-**Date:** 2026-09-09
-**Status:** open — do not build the mel cache until this closes
+**Date:** 2026-09-09 · updated 2026-09-10
+**Status:** open — **provisionally 10 s**; do not build the mel cache until this closes
 
 ## Why this is a decision and not a parameter
 
@@ -47,26 +47,53 @@ fails on real input is not a saving. So the resolution is not to shrink toward V
 3. **Fixed 6 s.** Covers ~p88 of Vaani and most short dictation, 60% of the 10 s compute.
    Truncates long dictation, which is the failure users would notice.
 
-## What closes this
+## Measured 2026-09-10 — IndicVoices is profiled
 
-Profile `ai4bharat/IndicVoices` (spontaneous/extempore, so expected to be longer) with
-`kaggle/01a_corpus_distribution_cpu.py` — set `SOURCE = "indicvoices"` at the top, which
-is already the default. Free, CPU, ~5 minutes.
-
-The second half is now written: `whisper_distill.data.window` costs each option against
-the **source mix weighted** distribution.
+Both referenced sources are now measured. See the 2026-09-10 addendum in
+[the corpus probe note](../research/2026-09-09-corpus-schema-probe.md); raw profiles live
+in `docs/research/profiles/`.
 
 ```
-python -m whisper_distill.data.window corpus_profile_*.json
+python -m whisper_distill.data.window docs/research/profiles/corpus_profile_*.json
 ```
 
-It weights sources by **contributed training steps, not hours** — a step costs one full
-window however short the clip, so a source contributes in proportion to
-`hours / mean_duration`. Vaani at 2.60 s median therefore pulls the mix harder than its
-120 h share suggests. Padding and truncation are reported separately and never netted
-against each other, because shrinking the window always improves one and worsens the
-other; per the tension above, read `speech lost` as the constraint and minimise padding
-under it.
+As segmented — what `01_acquire_segment_cpu.py` actually builds, since `merge_to_window`
+splits an over-long region into back-to-back windows rather than truncating it:
+
+| window | padding | speech dropped | windows/clip | corpus-pass compute |
+|---|---|---|---|---|
+| 4 s | 26.3% | 1.60% | 1.33 | 0.52x |
+| 6 s | 42.4% | 0.96% | 1.14 | 0.67x |
+| 8 s | 53.6% | 0.73% | 1.07 | 0.83x |
+| **10 s** | 61.3% | 0.54% | 1.03 | 1.00x |
+
+**Data loss does not discriminate.** Every candidate discards under 2% of speech, because
+long clips are split rather than cut. The tension stated above was framed on the
+assumption that a short window truncates the corpus; for *training* it does not. So the
+question reduces to compute against task fit — and the task-fit argument above is
+unchanged and still decisive. Dictation runs 3–10 s. A 6 s window would truncate real user
+input at inference, where there is no `merge_to_window` to split it, and the 33% compute
+saving does not buy back a model that cuts users off mid-sentence.
+
+**Option 1 (fixed 10 s) is therefore the working choice.** Option 2 (length bucketing)
+stays open as an efficiency ablation, and it is more attractive than it looked: at 1.03
+windows per clip the corpus is overwhelmingly single-window, so bucketing is mostly a
+question of how to batch the short tail. Option 3 (fixed 6 s) is rejected — it optimises
+the corpus at the task's expense.
+
+## What still closes this
+
+Two things, and neither is expensive:
+
+1. **The scraped Hinglish corpus, 30 h of the 200 h plan, is unmeasured** and is the source
+   most likely to be long-form. It is also — per the 2026-09-10 addendum — now load-bearing
+   for the Hinglish behaviour itself, since IndicVoices Hindi turned out to be 4.25%
+   Latin-script and cannot supply it. Profile it with `01a` once it exists.
+2. **The post-VAD distribution**, which is what actually reaches the cache. The table above
+   applies `merge_to_window`'s splitting to raw clip durations; the real pipeline runs VAD
+   first, so leading and trailing silence is trimmed before splitting. That moves padding
+   down and nothing else. `01_acquire_segment_cpu.py` already prints mean clip length —
+   read it from the first real acquisition run.
 
 Until then the cache is not written, because rewriting 11.5 GB of shards is a GPU-hour
 expense and this is a free CPU-hour question.

@@ -9,6 +9,7 @@ from whisper_distill.data.window import (
     mixed_cost,
     quantile_samples,
     render_comparison,
+    segmented_cost,
     window_cost,
 )
 
@@ -141,3 +142,69 @@ def test_empty_and_invalid_inputs_are_refused():
         window_cost([2.0, 3.0], 10.0, weights=[1.0])
     with pytest.raises(ValueError):
         quantile_samples({})
+
+
+# --------------------------------------------------------------------------------------
+# Segmented model: what merge_to_window actually builds. See segment.py -- an over-long
+# region is split into back-to-back windows, not truncated.
+# --------------------------------------------------------------------------------------
+
+def test_a_long_clip_is_split_into_windows_not_truncated():
+    """25 s at a 10 s window is three clips totalling 25 s of speech, none discarded."""
+    sc = segmented_cost([25.0], 10.0)
+    assert sc.windows_per_clip == pytest.approx(3.0)
+    assert sc.speech_dropped_fraction == pytest.approx(0.0)
+    assert sc.padding_fraction == pytest.approx(1 - 25.0 / 30.0)
+
+
+def test_a_tail_below_min_seconds_is_dropped_rather_than_padded():
+    """merge_to_window discards sub-min_seconds remainders as breath or a clipped word."""
+    sc = segmented_cost([20.5], 10.0, min_seconds=1.0)
+    assert sc.windows_per_clip == pytest.approx(2.0)
+    assert sc.speech_dropped_fraction == pytest.approx(0.5 / 20.5)
+    assert sc.padding_fraction == pytest.approx(0.0)
+
+
+def test_a_clip_shorter_than_min_seconds_emits_nothing():
+    sc = segmented_cost([0.5], 10.0, min_seconds=1.0)
+    assert sc.windows_per_clip == pytest.approx(0.0)
+    assert sc.speech_dropped_fraction == pytest.approx(1.0)
+
+
+def test_segmenting_loses_far_less_speech_than_truncating():
+    """The correction that matters: the truncating model overstates loss on long sources."""
+    s = quantile_samples({0.10: 0.64, 0.50: 3.52, 0.90: 14.11, 1.00: 28.92})
+    assert window_cost(s, 10.0).speech_lost_fraction > 0.15
+    assert segmented_cost(s, 10.0).speech_dropped_fraction < 0.02
+
+
+def test_compute_is_the_whole_corpus_pass_not_the_per_step_cost():
+    """Halving the window does not halve the cost -- it emits more windows per clip."""
+    s = quantile_samples({0.10: 0.64, 0.50: 3.52, 0.90: 14.11, 1.00: 28.92})
+    assert segmented_cost(s, 10.0).relative_encoder_compute == pytest.approx(1.0)
+    half = segmented_cost(s, 5.0).relative_encoder_compute
+    assert 0.5 < half < 1.0
+
+
+def test_segmented_padding_still_falls_as_the_window_shrinks():
+    s = quantile_samples({0.10: 1.71, 0.50: 2.60, 0.90: 6.35, 1.00: 14.61})
+    pads = [segmented_cost(s, w).padding_fraction for w in (4.0, 6.0, 8.0, 10.0)]
+    assert pads == sorted(pads)
+
+
+def test_render_shows_both_cost_models(tmp_path):
+    p = tmp_path / "vaani.json"
+    p.write_text(json.dumps(VAANI), encoding="utf-8")
+    out = render_comparison([SourceProfile.from_profile_json(p, 120.0)])
+    assert "AS SEGMENTED" in out
+    assert "windows/clip" in out
+    assert "speech lost" in out
+
+
+def test_segmented_refuses_the_same_bad_inputs():
+    with pytest.raises(ValueError):
+        segmented_cost([], 10.0)
+    with pytest.raises(ValueError):
+        segmented_cost([2.0], 0.0)
+    with pytest.raises(ValueError):
+        segmented_cost([2.0, 3.0], 10.0, weights=[1.0])

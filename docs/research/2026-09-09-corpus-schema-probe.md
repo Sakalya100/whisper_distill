@@ -120,3 +120,36 @@ runs 3–10 s. Sizing to a 2.6 s median would build a model that fails on the re
 Next: profile `ai4bharat/IndicVoices` with the same script (swap `DATASET`/`CONFIG` at the
 top) and decide the window from the **combined** distribution weighted by the final source
 mix. See [decision 0004](../decisions/0004-input-window-length.md).
+
+---
+
+## Addendum 2026-09-10 — the soundfile branch is no longer unexercised
+
+Ran the CPU stages locally on macOS (Python 3.13, `datasets` 5.0.1, no torchcodec, no
+system FFmpeg) via `scripts/local_dry_run.ipynb`, against the same Vaani Hindi split.
+
+```
+decoded via 'soundfile': 2.02 s, mono float32, peak/rms assertions passed
+40 rows profiled through the same path
+```
+
+**This retires a caveat stated above.** The decision section says the `decode=False` cast
+"routes through soundfile, which nothing has exercised against Vaani's actual audio
+format." That is now false: both branches of `decode_audio_field` have run against real
+Vaani audio — `audio_decoder` on Kaggle (400 rows) and `soundfile` locally (40 rows).
+
+The decision itself is unchanged: keep the `AudioDecoder` path on Kaggle, because it is
+what the image hands you and it has the larger sample behind it. What changes is the
+fallback's status. `audio_io.py` was written so a future image change would degrade rather
+than break, and that claim now rests on evidence instead of on the code being present.
+
+Two smaller things the local run confirmed:
+
+- **VAD really does have nothing to do on Vaani.** silero-vad on a 2.02 s clip returned a
+  single speech region spanning `0.00–2.00 s`, which `merge_to_window` passed through
+  unchanged. Exactly what a median of 2.60 s predicts, now observed rather than inferred.
+- **silero-vad needs torchaudio, not just torch.** Its `hubconf.py` declares
+  `dependencies = ['torch', 'torchaudio']` and `utils_vad.py` imports torchaudio at module
+  level, so `torch.hub.load` fails without it even though we only call
+  `get_speech_timestamps`. Kaggle's image preinstalls it, which is why
+  `01_acquire_segment_cpu.py` has never hit this; a fresh local venv does not.

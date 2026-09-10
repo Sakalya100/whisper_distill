@@ -18,6 +18,9 @@ cpu = [
     "soundfile>=0.12",
     "librosa>=0.10",
     "torch>=2.1",          # silero-vad only; CPU wheel is enough
+    "torchaudio>=2.1",     # silero-vad's hubconf declares it and utils_vad imports it at
+                           # module level, so torch.hub.load fails without it. Kaggle's
+                           # image preinstalls it; a fresh venv does not.
     "tqdm>=4.66",
 ]
 # Installed in GPU Kaggle sessions: labelling, training
